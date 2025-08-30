@@ -1,34 +1,41 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&amp;display=swap');
+
+:root {
+  --brand-blue: #0b6bcb;
+  --brand-blue-600: #0a5db0;
+  --brand-blue-700: #084d92;
+  --accent: #0ea5e9;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+body { font-family: 'Montserrat', ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji'; }
+
+.hero-bg {
+  position: relative;
+  background-position: center;
+  background-size: cover;
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+.hero-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(6, 24, 43, 0.55) 0%, rgba(6, 24, 43, 0.20) 60%, rgba(6, 24, 43, 0.05) 100%);
 }
 
-.App-link {
-    color: #61dafb;
-}
+.card-hover { transition: box-shadow 200ms ease, transform 200ms ease; }
+.card-hover:hover { box-shadow: 0 12px 30px rgba(0,0,0,0.12); transform: translateY(-2px); }
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+.btn-primary {
+  background: var(--brand-blue);
+  color: white;
+  border-radius: 9999px;
+  padding: 10px 18px;
+  font-weight: 600;
+  transition: background-color 200ms ease, box-shadow 200ms ease;
 }
+.btn-primary:hover { background: var(--brand-blue-600); box-shadow: 0 8px 20px rgba(11,107,203,0.25); }
+
+.badge-skill { background: rgba(11,107,203,0.08); color: var(--brand-blue-700); border: 1px solid rgba(11,107,203,0.20); }
+
+.section { padding: 64px 0; }
+
+.input, .select, .textarea { border-radius: 12px; }
