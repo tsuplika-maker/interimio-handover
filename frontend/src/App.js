@@ -208,6 +208,16 @@ function ManagerPricing() {
   const [applied, setApplied] = useState(null);
   const BASE = 299;
 
+  const seed = async () => {
+    try {
+      await axios.post(`${API}/discount-codes/seed`);
+      toast.success("Demo codes loaded: SHARE10, PARTNER50, VIP100");
+    } catch (e) {
+      console.error(e);
+      toast.error("Could not load demo codes");
+    }
+  };
+
   const apply = async () => {
     const raw = (code || "").trim();
     if (!raw) return;
