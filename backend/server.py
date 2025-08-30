@@ -271,7 +271,7 @@ async def create_discount_code(dc: DiscountCodeCreate):
 
     if dc.percent_off is None and dc.amount_off_eur is None:
         raise HTTPException(status_code=400, detail="Provide percent_off or amount_off_eur")
-    if dc.percent_off is not None and (dc.percent_off &lt; 0 or dc.percent_off > 100):
+    if dc.percent_off is not None and (dc.percent_off < 0 or dc.percent_off > 100):
         raise HTTPException(status_code=400, detail="percent_off must be 0-100")
 
     code = DiscountCode(**dc.model_dump())
