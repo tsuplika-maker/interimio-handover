@@ -206,17 +206,21 @@ function ManagerPricing() {
   const [code, setCode] = useState("");
   const [price, setPrice] = useState(299);
   const [applied, setApplied] = useState(null);
+  const BASE = 299;
 
   const apply = async () => {
-    if (!code) return;
+    const raw = (code || "").trim();
+    if (!raw) return;
+    const normalized = raw.toUpperCase();
     try {
-      const res = await axios.get(`${API}/discount-codes/validate`, { params: { code } });
+      const res = await axios.get(`${API}/discount-codes/validate`, { params: { code: normalized } });
       if (res.data.valid) {
-        setPrice(res.data.final_price_eur);
-        setApplied(res.data.applied);
+        const p = Number(res.data.final_price_eur);
+        setPrice(isNaN(p) ? BASE : p);
+        setApplied(res.data.applied || {});
         toast.success(`Code applied. New price €${res.data.final_price_eur}/month`);
       } else {
-        setPrice(299);
+        setPrice(BASE);
         setApplied(null);
         toast.error("Invalid or inactive code");
       }
