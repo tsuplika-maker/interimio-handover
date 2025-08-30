@@ -253,6 +253,7 @@ function ManagerPricing() {
             <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Enter code" />
           </div>
           <Button className="btn-primary" onClick={apply}>Apply</Button>
+          <Button className="btn-primary" onClick={seed}>Load demo codes</Button>
         </div>
         <div className="mt-4 flex items-center justify-between">
           <div className="text-sm">Your monthly price</div>
