@@ -178,7 +178,7 @@ async def list_managers(
 @api_router.post("/managers/seed")
 async def seed_managers():
     existing = await db.managers.count_documents({})
-    if existing &gt; 0:
+    if existing > 0:
         return {"created": 0, "message": "Managers already exist"}
 
     samples = [
