@@ -279,6 +279,25 @@ async def create_discount_code(dc: DiscountCodeCreate):
     return code
 
 
+
+@api_router.post("/discount-codes/seed")
+async def seed_discount_codes():
+    samples = [
+        {"code": "SHARE10", "percent_off": 10, "is_active": True, "assigned_to": "Shareholders"},
+        {"code": "PARTNER50", "amount_off_eur": 50, "is_active": True, "assigned_to": "Partners"},
+        {"code": "VIP100", "amount_off_eur": 100, "is_active": True, "assigned_to": "VIP"},
+    ]
+    created = 0
+    for s in samples:
+        # Only create if not exists
+        existing = await db.discount_codes.find_one({"code": s["code"]})
+        if not existing:
+            from copy import deepcopy
+            payload = DiscountCode(**deepcopy(s))
+            await db.discount_codes.insert_one(prepare_for_mongo(payload.model_dump()))
+            created += 1
+    return {"created": created}
+
 @api_router.get("/discount-codes/validate")
 async def validate_discount(code: str = Query(...)):
     doc = await db.discount_codes.find_one({"code": code, "is_active": True})
