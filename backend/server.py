@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Query, Depends, Request
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -8,7 +8,10 @@ from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Dict
 import uuid
-from datetime import datetime, date, time, timezone
+from datetime import datetime, date, time, timezone, timedelta
+from jose import jwt, JWTError
+from passlib.context import CryptContext
+import random
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -18,15 +21,21 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# Create the main app without a prefix
+# App
 app = FastAPI(title="Interimio API")
-
-# Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
-# ---------------------- Helpers ----------------------
-
+# ---------------------- Config & Helpers ----------------------
 BASE_SUBSCRIPTION_EUR = 299
+
+JWT_SECRET = os.environ.get("JWT_SECRET") or os.environ.get("JWT_SECRET_KEY") or "dev-secret-change-me"
+JWT_ALG = "HS256"
+ACCESS_MIN = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY")
+SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "noreply@example.com")
+EMAIL_DEV_MODE = "true" if not SENDGRID_API_KEY else os.environ.get("EMAIL_DEV_MODE", "false")
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def now_iso() -> str:
@@ -34,7 +43,6 @@ def now_iso() -> str:
 
 
 def prepare_for_mongo(data: Dict) -> Dict:
-    # Convert date/time objects to ISO strings for MongoDB
     d = dict(data)
     for k, v in list(d.items()):
         if isinstance(v, datetime):
@@ -46,8 +54,53 @@ def prepare_for_mongo(data: Dict) -> Dict:
     return d
 
 
-# ---------------------- Models ----------------------
+async def ensure_indexes():
+    try:
+        await db.users.create_index("email", unique=True)
+        await db.users.create_index("phone")
+        await db.otps.create_index("user_id")
+        await db.otps.create_index("expires_at")
+        await db.managers.create_index("created_at")
+    except Exception as e:
+        logger.warning(f"Index creation warning: {e}")
 
+
+def hash_password(p: str) -> str:
+    return pwd_context.hash(p)
+
+
+def verify_password(p: str, hashed: str) -> bool:
+    return pwd_context.verify(p, hashed)
+
+
+def create_access_token(sub: str, extra: Dict) -> str:
+    payload = {
+        "sub": sub,
+        "exp": datetime.utcnow() + timedelta(minutes=ACCESS_MIN),
+        **extra,
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
+
+
+async def get_current_user(request: Request) -> Dict:
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authentication required")
+    token = auth.split(" ", 1)[1]
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        user = await db.users.find_one({"id": user_id})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        return user
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+
+# ---------------------- Models ----------------------
 class StatusCheck(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     client_name: str
@@ -95,10 +148,10 @@ class Lead(LeadCreate):
 
 class DiscountCodeCreate(BaseModel):
     code: str
-    percent_off: Optional[int] = None  # 0-100
-    amount_off_eur: Optional[int] = None  # fixed amount in EUR
+    percent_off: Optional[int] = None
+    amount_off_eur: Optional[int] = None
     is_active: bool = True
-    assigned_to: Optional[str] = None  # e.g., group/shareholder name
+    assigned_to: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -113,8 +166,31 @@ class DiscountCode(BaseModel):
     created_at: str = Field(default_factory=now_iso)
 
 
-# ---------------------- Routes ----------------------
+# Auth models
+class RegisterInput(BaseModel):
+    email: EmailStr
+    phone: Optional[str] = None
+    password: str
+    role: str = Field(pattern=r"^(manager|client)$")
 
+
+class LoginInput(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class OTPRequest(BaseModel):
+    user_id: str
+    method: str = Field(pattern=r"^(email|sms)$")
+
+
+class OTPVerify(BaseModel):
+    user_id: str
+    method: str = Field(pattern=r"^(email|sms)$")
+    code: str = Field(pattern=r"^\d{6}$")
+
+
+# ---------------------- Core Routes ----------------------
 @api_router.get("/")
 async def root():
     return {"message": "Interimio API ready"}
@@ -133,9 +209,14 @@ async def get_status_checks():
     return [StatusCheck(**sc) for sc in status_checks]
 
 
-# Managers
+# ---------------------- Managers ----------------------
 @api_router.post("/managers", response_model=Manager)
-async def create_manager(manager: ManagerCreate):
+async def create_manager(manager: ManagerCreate, user=Depends(get_current_user)):
+    # Only verified managers can create a profile (email-first)
+    if user.get("role") != "manager":
+        raise HTTPException(status_code=403, detail="Manager account required")
+    if not user.get("email_verified", False):
+        raise HTTPException(status_code=403, detail="Email verification required")
     m = Manager(**manager.model_dump())
     await db.managers.insert_one(prepare_for_mongo(m.model_dump()))
     return m
@@ -187,8 +268,8 @@ async def seed_managers():
             "title": "Interim CFO",
             "location": "Berlin, DE",
             "daily_rate_eur": 1200,
-            "bio": "Finance leader with 15+ years in turnaround, FP&amp;A, and M&amp;A integration.",
-            "skills": ["Turnaround", "FP&amp;A", "M&amp;A"],
+            "bio": "Finance leader with 15+ years in turnaround, FP&A, and M&A integration.",
+            "skills": ["Turnaround", "FP&A", "M&A"],
             "image_url": "https://images.unsplash.com/photo-1736939678218-bd648b5ef3bb",
         },
         {
@@ -247,10 +328,15 @@ async def seed_managers():
     return {"created": created}
 
 
-# Leads &amp; fee
+# ---------------------- Leads & fee (gated) ----------------------
 @api_router.post("/leads", response_model=Lead)
-async def create_lead(lead: LeadCreate):
-    # Basic existence check
+async def create_lead(lead: LeadCreate, user=Depends(get_current_user)):
+    # Only verified clients can contact
+    if user.get("role") != "client":
+        raise HTTPException(status_code=403, detail="Client account required")
+    if not user.get("email_verified", False):
+        raise HTTPException(status_code=403, detail="Email verification required")
+
     manager = await db.managers.find_one({"id": lead.manager_id})
     if not manager:
         raise HTTPException(status_code=404, detail="Manager not found")
@@ -261,10 +347,9 @@ async def create_lead(lead: LeadCreate):
     return l
 
 
-# Discount codes for manager subscription
+# ---------------------- Discount codes ----------------------
 @api_router.post("/discount-codes", response_model=DiscountCode)
 async def create_discount_code(dc: DiscountCodeCreate):
-    # Ensure uniqueness by code
     existing = await db.discount_codes.find_one({"code": dc.code})
     if existing:
         raise HTTPException(status_code=400, detail="Code already exists")
@@ -278,25 +363,6 @@ async def create_discount_code(dc: DiscountCodeCreate):
     await db.discount_codes.insert_one(prepare_for_mongo(code.model_dump()))
     return code
 
-
-
-@api_router.post("/discount-codes/seed")
-async def seed_discount_codes():
-    samples = [
-        {"code": "SHARE10", "percent_off": 10, "is_active": True, "assigned_to": "Shareholders"},
-        {"code": "PARTNER50", "amount_off_eur": 50, "is_active": True, "assigned_to": "Partners"},
-        {"code": "VIP100", "amount_off_eur": 100, "is_active": True, "assigned_to": "VIP"},
-    ]
-    created = 0
-    for s in samples:
-        # Only create if not exists
-        existing = await db.discount_codes.find_one({"code": s["code"]})
-        if not existing:
-            from copy import deepcopy
-            payload = DiscountCode(**deepcopy(s))
-            await db.discount_codes.insert_one(prepare_for_mongo(payload.model_dump()))
-            created += 1
-    return {"created": created}
 
 @api_router.get("/discount-codes/validate")
 async def validate_discount(code: str = Query(...)):
@@ -325,7 +391,154 @@ async def validate_discount(code: str = Query(...)):
     }
 
 
-# Include the router in the main app
+@api_router.post("/discount-codes/seed")
+async def seed_discount_codes():
+    samples = [
+        {"code": "SHARE10", "percent_off": 10, "is_active": True, "assigned_to": "Shareholders"},
+        {"code": "PARTNER50", "amount_off_eur": 50, "is_active": True, "assigned_to": "Partners"},
+        {"code": "VIP100", "amount_off_eur": 100, "is_active": True, "assigned_to": "VIP"},
+    ]
+    created = 0
+    for s in samples:
+        existing = await db.discount_codes.find_one({"code": s["code"]})
+        if not existing:
+            obj = DiscountCode(**s)
+            await db.discount_codes.insert_one(prepare_for_mongo(obj.model_dump()))
+            created += 1
+    return {"created": created}
+
+
+# ---------------------- Auth ----------------------
+@api_router.post("/auth/register")
+async def register(input: RegisterInput):
+    exists = await db.users.find_one({"email": input.email})
+    if exists:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    user = {
+        "id": str(uuid.uuid4()),
+        "email": input.email,
+        "phone": input.phone,
+        "password_hash": hash_password(input.password),
+        "role": input.role,
+        "email_verified": False,
+        "phone_verified": False,
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+    }
+    await db.users.insert_one(user)
+    # auto-send email OTP
+    code = f"{random.randint(0, 999999):06d}"
+    otp = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "method": "email",
+        "code": code,
+        "expires_at": (datetime.utcnow() + timedelta(minutes=10)).isoformat()+"Z",
+        "used": False,
+        "created_at": now_iso(),
+    }
+    await db.otps.insert_one(otp)
+    if EMAIL_DEV_MODE == "true":
+        logger.info(f"[DEV OTP] Email code for {input.email}: {code}")
+    # If SENDGRID configured, send mail (omitted for MVP)
+    return {"user_id": user["id"], "next": "verify_email"}
+
+
+@api_router.post("/auth/send-otp")
+async def send_otp(req: OTPRequest):
+    user = await db.users.find_one({"id": req.user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    # Only email for now
+    if req.method != "email":
+        raise HTTPException(status_code=400, detail="Only email OTP enabled")
+    code = f"{random.randint(0, 999999):06d}"
+    await db.otps.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "method": "email",
+        "code": code,
+        "expires_at": (datetime.utcnow() + timedelta(minutes=10)).isoformat()+"Z",
+        "used": False,
+        "created_at": now_iso(),
+    })
+    if EMAIL_DEV_MODE == "true":
+        logger.info(f"[DEV OTP] Email code for {user['email']}: {code}")
+    return {"sent": True}
+
+
+@api_router.post("/auth/verify-otp")
+async def verify_otp(req: OTPVerify):
+    otp = await db.otps.find_one({
+        "user_id": req.user_id,
+        "method": req.method,
+        "code": req.code,
+        "used": False,
+    })
+    if not otp:
+        raise HTTPException(status_code=400, detail="Invalid code")
+    # expiry check
+    try:
+        exp = datetime.fromisoformat(otp["expires_at"].replace("Z", "+00:00"))
+    except Exception:
+        exp = datetime.utcnow() - timedelta(seconds=1)
+    if exp < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Code expired")
+    # mark used
+    await db.otps.update_one({"id": otp["id"]}, {"$set": {"used": True}})
+    if req.method == "email":
+        await db.users.update_one({"id": req.user_id}, {"$set": {"email_verified": True, "updated_at": now_iso()}})
+    elif req.method == "sms":
+        await db.users.update_one({"id": req.user_id}, {"$set": {"phone_verified": True, "updated_at": now_iso()}})
+    return {"verified": True}
+
+
+@api_router.post("/auth/login")
+async def login(input: LoginInput):
+    user = await db.users.find_one({"email": input.email})
+    if not user or not verify_password(input.password, user.get("password_hash", "")):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    token = create_access_token(user["id"], {
+        "role": user.get("role", "client"),
+        "email_verified": user.get("email_verified", False),
+        "phone_verified": user.get("phone_verified", False),
+    })
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "role": user.get("role", "client"),
+            "email_verified": user.get("email_verified", False),
+            "phone_verified": user.get("phone_verified", False),
+        }
+    }
+
+
+@api_router.get("/auth/me")
+async def me(user=Depends(get_current_user)):
+    return {
+        "id": user["id"],
+        "email": user["email"],
+        "role": user.get("role", "client"),
+        "email_verified": user.get("email_verified", False),
+        "phone_verified": user.get("phone_verified", False),
+    }
+
+
+# Dev-only helper to fetch last OTP (if email dev mode)
+@api_router.get("/auth/dev/last-otp")
+async def dev_last_otp(user_id: str):
+    if EMAIL_DEV_MODE != "true":
+        raise HTTPException(status_code=404, detail="Not available")
+    doc = await db.otps.find({"user_id": user_id, "method": "email"}).sort("created_at", -1).to_list(1)
+    if not doc:
+        return {"code": None}
+    return {"code": doc[0].get("code")}
+
+
+# Include router and middleware
 app.include_router(api_router)
 
 app.add_middleware(
@@ -336,12 +549,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+
+@app.on_event("startup")
+async def on_startup():
+    await ensure_indexes()
 
 
 @app.on_event("shutdown")

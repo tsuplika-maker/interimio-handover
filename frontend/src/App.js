@@ -12,38 +12,66 @@ import { Label } from "./components/ui/label.jsx";
 import { Badge } from "./components/ui/badge.jsx";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./components/ui/dialog.jsx";
 import { Textarea } from "./components/ui/textarea.jsx";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select.jsx";
 import { Calendar } from "./components/ui/calendar.jsx";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "./components/ui/input-otp.jsx";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
-const CURRENCY = "EUR";
 
-function useManagers(searchParams) {
-  const [managers, setManagers] = useState([]);
-  const [loading, setLoading] = useState(false);
+function useAuth() {
+  const [user, setUser] = useState(null);
+  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
-  const fetchManagers = async () => {
+  const me = async () => {
+    if (!token) return;
     try {
-      setLoading(true);
-      const params = new URLSearchParams();
-      if (searchParams.q) params.append("q", searchParams.q);
-      if (searchParams.location) params.append("location", searchParams.location);
-      if (searchParams.minRate) params.append("min_rate", searchParams.minRate);
-      if (searchParams.maxRate) params.append("max_rate", searchParams.maxRate);
-      const res = await axios.get(`${API}/managers?${params.toString()}`);
-      setManagers(res.data || []);
+      const res = await axios.get(`${API}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+      setUser(res.data);
     } catch (e) {
       console.error(e);
-      toast.error("Failed to load managers");
-    } finally {
-      setLoading(false);
+      localStorage.removeItem("access_token");
+      setUser(null);
     }
   };
 
-  useEffect(() => { fetchManagers(); }, [searchParams.q, searchParams.location, searchParams.minRate, searchParams.maxRate]);
+  useEffect(() => { me(); }, []);
 
-  return { managers, loading, refresh: fetchManagers };
+  const login = async (email, password) => {
+    const res = await axios.post(`${API}/auth/login`, { email, password });
+    localStorage.setItem("access_token", res.data.access_token);
+    await me();
+    toast.success("Logged in");
+  };
+
+  const logout = () => {
+    localStorage.removeItem("access_token");
+    setUser(null);
+  };
+
+  return { user, setUser, token, login, logout };
+}
+
+function Header({ openLogin, openRegister, user, logout }) {
+  return (
+    <header className="sticky top-0 z-40 bg-white/70 backdrop-blur border-b">
+      <div className="mx-auto max-w-7xl px-6 py-3 flex items-center justify-between">
+        <div className="font-bold text-xl">Interimio</div>
+        <div className="flex items-center gap-3">
+          {user ? (
+            <>
+              <span className="text-sm opacity-80">{user.email} • {user.role} {user.email_verified ? "✓" : "(verify)"}</span>
+              <button className="btn-primary" onClick={logout}>Logout</button>
+            </>
+          ) : (
+            <>
+              <button className="btn-primary" onClick={openLogin}>Login</button>
+              <button className="btn-primary" onClick={openRegister}>Register</button>
+            </>
+          )}
+        </div>
+      </div>
+    </header>
+  );
 }
 
 function Hero() {
@@ -88,7 +116,10 @@ function SearchBar({ onChange, values }) {
   );
 }
 
-function ManagerCard({ m, onRequest }) {
+function ManagerCard({ m, onRequest, ensureAuth }) {
+  const onClickRequest = () => {
+    if (!ensureAuth()) return; // will open auth if needed
+  };
   return (
     <Card className="card-hover">
       <CardHeader className="flex flex-row items-start gap-4">
@@ -112,7 +143,7 @@ function ManagerCard({ m, onRequest }) {
         <div className="mt-4 flex justify-end">
           <Dialog>
             <DialogTrigger asChild>
-              <Button className="btn-primary">Request</Button>
+              <Button className="btn-primary" onClick={onClickRequest}>Request</Button>
             </DialogTrigger>
             <RequestDialog manager={m} onRequest={onRequest} />
           </Dialog>
@@ -134,6 +165,7 @@ function RequestDialog({ manager, onRequest }) {
 
   const submit = async () => {
     try {
+      const token = localStorage.getItem("access_token");
       const payload = {
         manager_id: manager.id,
         company_name: company,
@@ -144,12 +176,12 @@ function RequestDialog({ manager, onRequest }) {
         daily_rate_eur: dailyRate,
         message,
       };
-      const res = await axios.post(`${API}/leads`, payload);
+      const res = await axios.post(`${API}/leads`, payload, { headers: { Authorization: `Bearer ${token}` } });
       toast.success(`Request sent. Estimated service fee: €${res.data.fee_eur}`);
       onRequest && onRequest();
     } catch (e) {
       console.error(e);
-      toast.error("Could not send request");
+      toast.error(e?.response?.data?.detail || "Could not send request");
     }
   };
 
@@ -157,7 +189,7 @@ function RequestDialog({ manager, onRequest }) {
     <DialogContent className="sm:max-w-lg">
       <DialogHeader>
         <DialogTitle>Request {manager.name}</DialogTitle>
-        <DialogDescription>Clients pay a 20% service fee per day. We will contact you shortly.</DialogDescription>
+        <DialogDescription>Clients must be logged in and verified (email) to contact a manager. Service fee is 20% per day.</DialogDescription>
       </DialogHeader>
       <div className="grid gap-3 py-2">
         <div className="grid grid-cols-2 gap-3">
@@ -202,7 +234,7 @@ function RequestDialog({ manager, onRequest }) {
   );
 }
 
-function ManagerPricing() {
+function ManagerPricing({ ensureManagerAuth }) {
   const [code, setCode] = useState("");
   const [price, setPrice] = useState(299);
   const [applied, setApplied] = useState(null);
@@ -244,7 +276,7 @@ function ManagerPricing() {
     <Card id="for-managers" className="card-hover">
       <CardHeader>
         <CardTitle>For Interim Managers</CardTitle>
-        <CardDescription>Join Interimio for €299/month. Add your profile and get discovered. You can apply discount codes shared with you.</CardDescription>
+        <CardDescription>Join Interimio for €299/month. Add your profile and get discovered. You need an account and email verification to create your profile.</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="flex items-end gap-3">
@@ -265,9 +297,9 @@ function ManagerPricing() {
         <div className="mt-5">
           <Dialog>
             <DialogTrigger asChild>
-              <Button className="btn-primary">Create your profile</Button>
+              <Button className="btn-primary" onClick={ensureManagerAuth}>Create your profile</Button>
             </DialogTrigger>
-            <SignupDialog />
+            {/* Manager profile dialog appears from Directory via create_manager */}
           </Dialog>
         </div>
       </CardContent>
@@ -275,76 +307,32 @@ function ManagerPricing() {
   );
 }
 
-function SignupDialog() {
-  const [form, setForm] = useState({ name: "", title: "", location: "", daily_rate_eur: 1000, bio: "", skills: "", image_url: "" });
+function Directory({ ensureAuth }) {
+  const [filters, setFilters] = useState({ q: "", location: "", minRate: "", maxRate: "" });
+  const [managers, setManagers] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  const submit = async () => {
+  const fetchManagers = async () => {
     try {
-      const payload = {
-        ...form,
-        daily_rate_eur: Number(form.daily_rate_eur),
-        skills: form.skills ? form.skills.split(',').map(s => s.trim()).filter(Boolean) : [],
-      };
-      const res = await axios.post(`${API}/managers`, payload);
-      toast.success("Profile created. You are now discoverable.");
+      setLoading(true);
+      const params = new URLSearchParams();
+      if (filters.q) params.append("q", filters.q);
+      if (filters.location) params.append("location", filters.location);
+      if (filters.minRate) params.append("min_rate", filters.minRate);
+      if (filters.maxRate) params.append("max_rate", filters.maxRate);
+      const res = await axios.get(`${API}/managers?${params.toString()}`);
+      setManagers(res.data || []);
     } catch (e) {
       console.error(e);
-      toast.error("Could not create profile");
+      toast.error("Failed to load managers");
+    } finally {
+      setLoading(false);
     }
   };
 
-  return (
-    <DialogContent className="sm:max-w-lg">
-      <DialogHeader>
-        <DialogTitle>Create profile</DialogTitle>
-        <DialogDescription>Basic details to appear in the directory.</DialogDescription>
-      </DialogHeader>
-      <div className="grid gap-3 py-2">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Name</Label>
-            <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-          </div>
-          <div>
-            <Label>Title</Label>
-            <Input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. Interim CFO" />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Location</Label>
-            <Input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="City, Country" />
-          </div>
-          <div>
-            <Label>Daily rate (€)</Label>
-            <Input type="number" value={form.daily_rate_eur} onChange={e => setForm({ ...form, daily_rate_eur: e.target.value })} />
-          </div>
-        </div>
-        <div>
-          <Label>Skills (comma separated)</Label>
-          <Input value={form.skills} onChange={e => setForm({ ...form, skills: e.target.value })} placeholder="M&amp;A, Turnaround, Cloud" />
-        </div>
-        <div>
-          <Label>Short bio</Label>
-          <Textarea value={form.bio} onChange={e => setForm({ ...form, bio: e.target.value })} />
-        </div>
-        <div>
-          <Label>Image URL (optional)</Label>
-          <Input value={form.image_url} onChange={e => setForm({ ...form, image_url: e.target.value })} placeholder="https://..." />
-        </div>
-      </div>
-      <DialogFooter>
-        <Button className="btn-primary" onClick={submit}>Save</Button>
-      </DialogFooter>
-    </DialogContent>
-  );
-}
+  useEffect(() => { fetchManagers(); }, [filters.q, filters.location, filters.minRate, filters.maxRate]);
 
-function Directory() {
-  const [filters, setFilters] = useState({ q: "", location: "", minRate: "", maxRate: "" });
-  const { managers, loading, refresh } = useManagers(filters);
-
-  const requestRefresh = () => refresh();
+  const requestRefresh = () => fetchManagers();
 
   return (
     <section id="browse" className="section">
@@ -354,7 +342,7 @@ function Directory() {
             <h2 className="text-2xl font-semibold">Browse interim managers</h2>
             <p className="text-sm text-muted-foreground">Search by title, skills, location, and rate.</p>
           </div>
-          <button className="btn-primary" onClick={async () => { await axios.post(`${API}/managers/seed`); toast.success("Sample profiles added"); refresh(); }}>Add sample profiles</button>
+          <button className="btn-primary" onClick={async () => { await axios.post(`${API}/managers/seed`); toast.success("Sample profiles added"); fetchManagers(); }}>Add sample profiles</button>
         </div>
         <div className="mt-6">
           <SearchBar values={filters} onChange={setFilters} />
@@ -366,12 +354,140 @@ function Directory() {
             <div className="text-sm text-muted-foreground">No managers found. Try broadening your search.</div>
           ) : (
             managers.map(m => (
-              <ManagerCard key={m.id} m={m} onRequest={requestRefresh} />
+              <ManagerCard key={m.id} m={m} onRequest={requestRefresh} ensureAuth={ensureAuth} />
             ))
           )}
         </div>
       </div>
     </section>
+  );
+}
+
+function RegisterDialog({ onDone }) {
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState("client");
+  const [step, setStep] = useState("form");
+  const [otp, setOtp] = useState("");
+  const [userId, setUserId] = useState(null);
+
+  const submit = async () => {
+    try {
+      const res = await axios.post(`${API}/auth/register`, { email, phone, password, role });
+      setUserId(res.data.user_id);
+      setStep("verify");
+      toast.success("Registered. Check OTP (dev mode logs)");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not register");
+    }
+  };
+
+  const resend = async () => {
+    await axios.post(`${API}/auth/send-otp`, { user_id: userId, method: "email" });
+    toast.success("OTP sent");
+  };
+
+  const verify = async () => {
+    try {
+      await axios.post(`${API}/auth/verify-otp`, { user_id: userId, method: "email", code: otp });
+      toast.success("Email verified. You can log in now.");
+      onDone && onDone();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Invalid code");
+    }
+  };
+
+  return (
+    <DialogContent className="sm:max-w-lg">
+      <DialogHeader>
+        <DialogTitle>Create account</DialogTitle>
+        <DialogDescription>Select your role and verify by email to proceed.</DialogDescription>
+      </DialogHeader>
+      {step === "form" ? (
+        <div className="grid gap-3 py-2">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Email</Label>
+              <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" />
+            </div>
+            <div>
+              <Label>Phone (optional)</Label>
+              <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+49..." />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Password</Label>
+              <Input type="password" value={password} onChange={e => setPassword(e.target.value)} />
+            </div>
+            <div>
+              <Label>Role</Label>
+              <select className="w-full border rounded-md h-10 px-2" value={role} onChange={e => setRole(e.target.value)}>
+                <option value="client">Client</option>
+                <option value="manager">Manager</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex justify-end pt-2">
+            <Button className="btn-primary" onClick={submit}>Register</Button>
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-3 py-2">
+          <div>
+            <Label>Enter the 6-digit code (emailed)</Label>
+            <div className="flex justify-center">
+              <InputOTP maxLength={6} value={otp} onChange={setOtp}>
+                <InputOTPGroup>
+                  {[0,1,2,3,4,5].map(i => (<InputOTPSlot key={i} index={i} />))}
+                </InputOTPGroup>
+              </InputOTP>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <Button className="btn-primary" onClick={verify}>Verify</Button>
+            <Button className="btn-primary" onClick={resend}>Resend</Button>
+          </div>
+        </div>
+      )}
+    </DialogContent>
+  );
+}
+
+function LoginDialog({ onDone, doLogin }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const submit = async () => {
+    try {
+      await doLogin(email, password);
+      onDone && onDone();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Login failed");
+    }
+  };
+
+  return (
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle>Login</DialogTitle>
+        <DialogDescription>Access your Interimio account</DialogDescription>
+      </DialogHeader>
+      <div className="grid gap-3 py-2">
+        <div>
+          <Label>Email</Label>
+          <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" />
+        </div>
+        <div>
+          <Label>Password</Label>
+          <Input type="password" value={password} onChange={e => setPassword(e.target.value)} />
+        </div>
+        <div className="flex justify-end pt-2">
+          <Button className="btn-primary" onClick={submit}>Login</Button>
+        </div>
+      </div>
+    </DialogContent>
   );
 }
 
@@ -387,17 +503,53 @@ function Footer() {
 }
 
 function App() {
+  const { user, login, logout } = useAuth();
+  const [openLogin, setOpenLogin] = useState(false);
+  const [openRegister, setOpenRegister] = useState(false);
+
+  const ensureAuth = () => {
+    if (!user) {
+      setOpenLogin(true);
+      toast.info("Please login to continue");
+      return false;
+    }
+    if (!user.email_verified) {
+      toast.info("Please verify your email to contact a manager");
+      return false;
+    }
+    if (user.role !== "client") {
+      toast.info("Use a client account to contact managers");
+      return false;
+    }
+    return true;
+  };
+
+  const ensureManagerAuth = () => {
+    if (!user) { setOpenLogin(true); return false; }
+    if (user.role !== "manager") { toast.info("Switch to a manager account"); return false; }
+    if (!user.email_verified) { toast.info("Verify your email to create a profile"); return false; }
+    return true;
+  };
+
   return (
     <div className="App">
       <BrowserRouter>
+        <Header user={user} logout={logout} openLogin={() => setOpenLogin(true)} openRegister={() => setOpenRegister(true)} />
         <Hero />
         <div className="section">
           <div className="mx-auto max-w-7xl px-6 grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2"><Directory /></div>
-            <div className="lg:col-span-1"><ManagerPricing /></div>
+            <div className="lg:col-span-2"><Directory ensureAuth={ensureAuth} /></div>
+            <div className="lg:col-span-1"><ManagerPricing ensureManagerAuth={ensureManagerAuth} /></div>
           </div>
         </div>
         <Footer />
+
+        <Dialog open={openLogin} onOpenChange={setOpenLogin}>
+          <LoginDialog onDone={() => setOpenLogin(false)} doLogin={login} />
+        </Dialog>
+        <Dialog open={openRegister} onOpenChange={setOpenRegister}>
+          <RegisterDialog onDone={() => { setOpenRegister(false); setOpenLogin(true); }} />
+        </Dialog>
       </BrowserRouter>
       <Toaster richColors position="top-center" />
     </div>
