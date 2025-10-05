@@ -174,6 +174,79 @@ class InterimioAPITester:
 
         return success1 and success2 and success3 and success4
 
+    def test_seed_courses(self):
+        """Test seeding sample courses"""
+        return self.run_test("Seed Courses", "POST", "courses/seed", 200)
+
+    def test_list_courses(self):
+        """Test listing courses"""
+        success, response = self.run_test("List Courses", "GET", "courses", 200)
+        if success and response:
+            courses = response
+            if len(courses) >= 2:
+                print(f"   Found {len(courses)} courses")
+                return True
+            else:
+                print(f"   Expected at least 2 courses, got {len(courses)}")
+                return False
+        return success
+
+    def test_get_course_details(self):
+        """Test getting course details with lessons"""
+        # First get courses to get an ID
+        success, response = self.run_test("Get Courses for Details", "GET", "courses", 200)
+        if not success or not response:
+            return False
+        
+        if len(response) == 0:
+            print("   No courses available for detail testing")
+            return False
+            
+        course_id = response[0].get('id')
+        success, course_details = self.run_test("Get Course Details", "GET", f"courses/{course_id}", 200)
+        
+        if success and course_details:
+            course = course_details.get('course')
+            lessons = course_details.get('lessons', [])
+            print(f"   Course: {course.get('title') if course else 'Unknown'}")
+            print(f"   Lessons: {len(lessons)}")
+            return len(lessons) >= 2
+        return success
+
+    def test_seed_podcasts(self):
+        """Test seeding sample podcast episodes"""
+        return self.run_test("Seed Podcasts", "POST", "podcasts/seed", 200)
+
+    def test_list_podcasts(self):
+        """Test listing podcast episodes"""
+        success, response = self.run_test("List Podcasts", "GET", "podcasts", 200)
+        if success and response:
+            episodes = response
+            if len(episodes) >= 2:
+                print(f"   Found {len(episodes)} episodes")
+                return True
+            else:
+                print(f"   Expected at least 2 episodes, got {len(episodes)}")
+                return False
+        return success
+
+    def test_auth_register(self):
+        """Test user registration"""
+        user_data = {
+            "email": f"test_{datetime.now().strftime('%H%M%S')}@example.com",
+            "password": "TestPass123!",
+            "role": "client"
+        }
+        
+        success, response = self.run_test("Register User", "POST", "auth/register", 200, data=user_data)
+        if success and response:
+            user_id = response.get('user_id')
+            next_step = response.get('next')
+            print(f"   User ID: {user_id}")
+            print(f"   Next step: {next_step}")
+            return user_id is not None and next_step == "verify_email"
+        return success
+
 def main():
     print("🚀 Starting Interimio API Tests")
     print("=" * 50)
