@@ -85,7 +85,7 @@ function Hero() {
           <p className="mt-4 text-lg opacity-90">Browse vetted leaders, filter by skills and rates, and submit a request. Clients pay a 20% service fee per day of engagement.</p>
           <div className="mt-6 flex gap-3">
             <a href="#browse"><button className="btn-primary">Browse managers</button></a>
-            <a href="#for-managers"><button className="btn-primary" style={{background:"#0a5db0"}}>For managers</button></a>
+            <a href="#learn"><button className="btn-primary" style={{background:"#0a5db0"}}>Learning</button></a>
           </div>
         </div>
       </div>
@@ -299,7 +299,6 @@ function ManagerPricing({ ensureManagerAuth }) {
             <DialogTrigger asChild>
               <Button className="btn-primary" onClick={ensureManagerAuth}>Create your profile</Button>
             </DialogTrigger>
-            {/* Manager profile dialog appears from Directory via create_manager */}
           </Dialog>
         </div>
       </CardContent>
@@ -377,7 +376,7 @@ function RegisterDialog({ onDone }) {
       const res = await axios.post(`${API}/auth/register`, { email, phone, password, role });
       setUserId(res.data.user_id);
       setStep("verify");
-      toast.success("Registered. Check OTP (dev mode logs)");
+      toast.success("Registered. Check your email for the code");
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Could not register");
     }
@@ -491,6 +490,174 @@ function LoginDialog({ onDone, doLogin }) {
   );
 }
 
+function LearningSection({ ensureAnyVerified }) {
+  const [courses, setCourses] = useState([]);
+  const [selected, setSelected] = useState(null);
+
+  const load = async () => {
+    const res = await axios.get(`${API}/courses`);
+    setCourses(res.data || []);
+  };
+  useEffect(() => { load(); }, []);
+
+  const seed = async () => {
+    await axios.post(`${API}/courses/seed`);
+    await load();
+  };
+
+  return (
+    <section id="learn" className="section">
+      <div className="mx-auto max-w-7xl px-6">
+        <div className="flex items-end justify-between">
+          <div>
+            <h2 className="text-2xl font-semibold">Learning platform</h2>
+            <p className="text-sm text-muted-foreground">Courses, lessons, and progress tracking</p>
+          </div>
+          <button className="btn-primary" onClick={seed}>Add sample courses</button>
+        </div>
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {courses.map(c => (
+            <Card key={c.id} className="card-hover">
+              <CardHeader>
+                <CardTitle>{c.title}</CardTitle>
+                <CardDescription>{c.level} • {(c.tags || []).join(", ")}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm opacity-80">{c.description}</p>
+                <div className="mt-4 flex justify-end">
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button className="btn-primary" onClick={() => setSelected(c.id)}>Open</Button>
+                    </DialogTrigger>
+                    <CourseDialog courseId={selected} ensureAnyVerified={ensureAnyVerified} />
+                  </Dialog>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CourseDialog({ courseId, ensureAnyVerified }) {
+  const [course, setCourse] = useState(null);
+  const [lessons, setLessons] = useState([]);
+  const [enrolled, setEnrolled] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  const load = async (id) => {
+    if (!id) return;
+    const res = await axios.get(`${API}/courses/${id}`);
+    setCourse(res.data.course);
+    setLessons(res.data.lessons || []);
+  };
+  useEffect(() => { load(courseId); }, [courseId]);
+
+  const enroll = async () => {
+    if (!ensureAnyVerified()) return;
+    const token = localStorage.getItem("access_token");
+    const res = await axios.post(`${API}/enrollments`, { course_id: courseId }, { headers: { Authorization: `Bearer ${token}` } });
+    setEnrolled(true);
+    setProgress(res.data.progress_percent || 0);
+    toast.success("Enrolled");
+  };
+
+  const toggleComplete = async (lessonId, completed) => {
+    const token = localStorage.getItem("access_token");
+    const res = await axios.post(`${API}/enrollments/progress`, { course_id: courseId, lesson_id: lessonId, completed }, { headers: { Authorization: `Bearer ${token}` } });
+    setProgress(res.data.progress_percent);
+  };
+
+  if (!course) return <DialogContent className="sm:max-w-2xl">Loading…</DialogContent>;
+
+  return (
+    <DialogContent className="sm:max-w-2xl">
+      <DialogHeader>
+        <DialogTitle>{course.title}</DialogTitle>
+        <DialogDescription>{course.description}</DialogDescription>
+      </DialogHeader>
+      <div className="grid gap-3">
+        <div className="text-sm opacity-70">Progress: {progress}%</div>
+        {!enrolled && (
+          <div className="flex justify-end"><Button className="btn-primary" onClick={enroll}>Enroll</Button></div>
+        )}
+        <div className="space-y-2">
+          {lessons.map((l, idx) => (
+            <Card key={l.id}>
+              <CardHeader>
+                <CardTitle className="text-base">{idx + 1}. {l.title}</CardTitle>
+                <CardDescription>{l.duration_minutes || 5} min</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {l.video_url ? (
+                  <div className="aspect-video w-full overflow-hidden rounded-md">
+                    <iframe title={l.title} src={l.video_url} width="100%" height="100%" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture" allowFullScreen></iframe>
+                  </div>
+                ) : null}
+                {l.content ? (<p className="mt-3 text-sm opacity-80">{l.content}</p>) : null}
+                <div className="mt-3 flex justify-end gap-2">
+                  <Button className="btn-primary" onClick={() => toggleComplete(l.id, true)}>Mark completed</Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    </DialogContent>
+  );
+}
+
+function PodcastSection() {
+  const [eps, setEps] = useState([]);
+  const [selected, setSelected] = useState(null);
+
+  const load = async () => {
+    const res = await axios.get(`${API}/podcasts`);
+    setEps(res.data || []);
+    if (!selected && res.data && res.data.length) setSelected(res.data[0]);
+  };
+  useEffect(() => { load(); }, []);
+
+  const seed = async () => { await axios.post(`${API}/podcasts/seed`); await load(); };
+
+  return (
+    <section id="podcast" className="section">
+      <div className="mx-auto max-w-7xl px-6">
+        <div className="flex items-end justify-between">
+          <div>
+            <h2 className="text-2xl font-semibold">Interimio Podcast</h2>
+            <p className="text-sm text-muted-foreground">Monthly talks with clients and leaders</p>
+          </div>
+          <button className="btn-primary" onClick={seed}>Add sample episodes</button>
+        </div>
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            {selected ? (
+              <div className="aspect-video w-full overflow-hidden rounded-md">
+                <iframe title={selected.title} src={selected.spotify_url} width="100%" height="100%" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>
+              </div>
+            ) : (
+              <div className="text-sm opacity-70">No episode selected</div>
+            )}
+          </div>
+          <div className="space-y-3">
+            {eps.map(ep => (
+              <Card key={ep.id} className="cursor-pointer hover:shadow" onClick={() => setSelected(ep)}>
+                <CardHeader>
+                  <CardTitle className="text-base">{ep.title}</CardTitle>
+                  <CardDescription>{new Date(ep.publish_date || ep.created_at).toDateString()}</CardDescription>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Footer() {
   return (
     <footer className="mt-12 border-t">
@@ -531,6 +698,12 @@ function App() {
     return true;
   };
 
+  const ensureAnyVerified = () => {
+    if (!user) { setOpenLogin(true); return false; }
+    if (!user.email_verified) { toast.info("Verify your email to enroll"); return false; }
+    return true;
+  };
+
   return (
     <div className="App">
       <BrowserRouter>
@@ -542,6 +715,8 @@ function App() {
             <div className="lg:col-span-1"><ManagerPricing ensureManagerAuth={ensureManagerAuth} /></div>
           </div>
         </div>
+        <LearningSection ensureAnyVerified={ensureAnyVerified} />
+        <PodcastSection />
         <Footer />
 
         <Dialog open={openLogin} onOpenChange={setOpenLogin}>

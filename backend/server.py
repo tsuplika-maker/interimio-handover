@@ -69,6 +69,10 @@ async def ensure_indexes():
         await db.otps.create_index("user_id")
         await db.otps.create_index("expires_at")
         await db.managers.create_index("created_at")
+        await db.courses.create_index("created_at")
+        await db.lessons.create_index("course_id")
+        await db.enrollments.create_index([("user_id", 1), ("course_id", 1)], unique=True)
+        await db.podcasts.create_index("publish_date")
     except Exception as e:
         logger.warning(f"Index creation warning: {e}")
 
@@ -223,6 +227,70 @@ class OTPVerify(BaseModel):
     user_id: str
     method: str = Field(pattern=r"^(email|sms)$")
     code: str = Field(pattern=r"^\d{6}$")
+
+
+# Learning models
+class CourseCreate(BaseModel):
+    title: str
+    description: str
+    cover_image_url: Optional[str] = None
+    tags: List[str] = []
+    level: Optional[str] = "Beginner"
+    published: bool = True
+
+
+class Course(CourseCreate):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: str = Field(default_factory=now_iso)
+    updated_at: str = Field(default_factory=now_iso)
+
+
+class LessonCreate(BaseModel):
+    course_id: str
+    title: str
+    video_url: Optional[str] = None
+    content: Optional[str] = None
+    duration_minutes: Optional[int] = 5
+    order: int = 1
+    published: bool = True
+
+
+class Lesson(LessonCreate):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: str = Field(default_factory=now_iso)
+
+
+class EnrollmentCreate(BaseModel):
+    course_id: str
+
+
+class Enrollment(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    course_id: str
+    completed_lessons: List[str] = []
+    progress_percent: int = 0
+    created_at: str = Field(default_factory=now_iso)
+    updated_at: str = Field(default_factory=now_iso)
+
+
+class ProgressUpdate(BaseModel):
+    course_id: str
+    lesson_id: str
+    completed: bool = True
+
+
+# Podcast
+class PodcastEpisodeCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    spotify_url: str
+    publish_date: Optional[str] = Field(default_factory=lambda: datetime.now(timezone.utc).date().isoformat())
+
+
+class PodcastEpisode(PodcastEpisodeCreate):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: str = Field(default_factory=now_iso)
 
 
 # ---------------------- Core Routes ----------------------
@@ -563,15 +631,117 @@ async def me(user=Depends(get_current_user)):
     }
 
 
-# Dev-only helper to fetch last OTP (if email dev mode)
-@api_router.get("/auth/dev/last-otp")
-async def dev_last_otp(user_id: str):
-    if EMAIL_DEV_MODE != "true":
-        raise HTTPException(status_code=404, detail="Not available")
-    doc = await db.otps.find({"user_id": user_id, "method": "email"}).sort("created_at", -1).to_list(1)
-    if not doc:
-        return {"code": None}
-    return {"code": doc[0].get("code")}
+# ---------------------- Learning ----------------------
+@api_router.post("/courses/seed")
+async def seed_courses():
+    existing = await db.courses.count_documents({})
+    if existing > 0:
+        return {"created": 0, "message": "Courses already exist"}
+
+    c1 = Course(title="Interdisciplinary Leadership 101", description="Foundations of cross-functional leadership for interim managers.", cover_image_url=None, tags=["Leadership", "Communication"], level="Beginner")
+    c2 = Course(title="Crisis to Clarity: Turnaround Essentials", description="Hands-on toolkit for stabilizing and turning around teams and P&L.", tags=["Turnaround", "Finance"], level="Intermediate")
+
+    await db.courses.insert_many([prepare_for_mongo(c1.model_dump()), prepare_for_mongo(c2.model_dump())])
+
+    lessons = [
+        Lesson(course_id=c1.id, title="Role of the Interim Leader", video_url="https://www.youtube.com/embed/dQw4w9WgXcQ", content="Overview and expectations.", order=1),
+        Lesson(course_id=c1.id, title="Stakeholder Mapping", video_url="https://www.youtube.com/embed/dQw4w9WgXcQ", content="Map influence and interests.", order=2),
+        Lesson(course_id=c2.id, title="Cash & Liquidity", video_url="https://www.youtube.com/embed/dQw4w9WgXcQ", content="Cash-first mindset.", order=1),
+        Lesson(course_id=c2.id, title="Communication in Crisis", video_url="https://www.youtube.com/embed/dQw4w9WgXcQ", content="Narratives that align.", order=2),
+    ]
+    await db.lessons.insert_many([prepare_for_mongo(l.model_dump()) for l in lessons])
+
+    return {"created": 2, "lessons": len(lessons)}
+
+
+@api_router.get("/courses", response_model=List[Course])
+async def list_courses(q: Optional[str] = Query(None)):
+    filt: Dict = {"published": True}
+    if q:
+        filt["$or"] = [{"title": {"$regex": q, "$options": "i"}}, {"tags": {"$regex": q, "$options": "i"}}]
+    docs = await db.courses.find(filt).sort("created_at", -1).to_list(length=50)
+    return [Course(**d) for d in docs]
+
+
+@api_router.get("/courses/{course_id}")
+async def get_course(course_id: str):
+    course = await db.courses.find_one({"id": course_id})
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    lessons = await db.lessons.find({"course_id": course_id, "published": True}).sort("order", 1).to_list(length=200)
+    return {"course": Course(**course), "lessons": [Lesson(**l) for l in lessons]}
+
+
+@api_router.post("/enrollments", response_model=Enrollment)
+async def enroll(input: EnrollmentCreate, user=Depends(get_current_user)):
+    # all verified users (email) can enroll
+    if not user.get("email_verified", False):
+        raise HTTPException(status_code=403, detail="Email verification required")
+    existing = await db.enrollments.find_one({"user_id": user["id"], "course_id": input.course_id})
+    if existing:
+        return Enrollment(**existing)
+    enr = Enrollment(user_id=user["id"], course_id=input.course_id)
+    await db.enrollments.insert_one(prepare_for_mongo(enr.model_dump()))
+    return enr
+
+
+def compute_progress_percent(course_id: str, completed_len: int) -> int:
+    # progress = completed lessons / total lessons * 100 (rounded)
+    # This function is synchronous; reading total lessons will be done in endpoint
+    return 0
+
+
+@api_router.post("/enrollments/progress")
+async def update_progress(p: ProgressUpdate, user=Depends(get_current_user)):
+    enr = await db.enrollments.find_one({"user_id": user["id"], "course_id": p.course_id})
+    if not enr:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+
+    completed: List[str] = list(enr.get("completed_lessons", []))
+    if p.completed and p.lesson_id not in completed:
+        completed.append(p.lesson_id)
+    if not p.completed and p.lesson_id in completed:
+        completed.remove(p.lesson_id)
+
+    total = await db.lessons.count_documents({"course_id": p.course_id, "published": True})
+    pct = int(round((len(completed) / total) * 100)) if total > 0 else 0
+
+    await db.enrollments.update_one(
+        {"id": enr["id"]},
+        {"$set": {"completed_lessons": completed, "progress_percent": pct, "updated_at": now_iso()}},
+    )
+    return {"progress_percent": pct, "completed_lessons": completed}
+
+
+@api_router.get("/enrollments/me")
+async def my_enrollments(user=Depends(get_current_user)):
+    docs = await db.enrollments.find({"user_id": user["id"]}).sort("updated_at", -1).to_list(length=100)
+    # attach course titles
+    out = []
+    for e in docs:
+        course = await db.courses.find_one({"id": e["course_id"]})
+        e["course_title"] = course["title"] if course else "Unknown"
+        out.append(e)
+    return out
+
+
+# ---------------------- Podcast ----------------------
+@api_router.post("/podcasts/seed")
+async def seed_podcasts():
+    if await db.podcasts.count_documents({}) > 0:
+        return {"created": 0}
+    eps = [
+        PodcastEpisode(title="Interim Leadership — Episode 1", description="Kickoff with a DAX client on rapid transformation.", spotify_url="https://open.spotify.com/embed/episode/6rqhFgbbKwnb9MLmUQDhG6"),
+        PodcastEpisode(title="Turnarounds in 90 Days", description="High-profile CFO on cash discipline.", spotify_url="https://open.spotify.com/embed/episode/2cYVEtLFK9pFQf3VqM0J8G"),
+    ]
+    await db.podcasts.insert_many([prepare_for_mongo(e.model_dump()) for e in eps])
+    return {"created": len(eps)}
+
+
+@api_router.get("/podcasts", response_model=List[PodcastEpisode])
+async def list_podcasts():
+    docs = await db.podcasts.find({}).sort("created_at", -1).to_list(length=50)
+    return [PodcastEpisode(**d) for d in docs]
 
 
 # Include router and middleware
