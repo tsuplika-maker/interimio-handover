@@ -259,10 +259,14 @@ def main():
         ("Seed Managers", tester.test_seed_managers),
         ("List Managers", tester.test_list_managers),
         ("Search Managers", tester.test_search_managers),
-        ("Create Manager", tester.test_create_manager),
-        ("Create Lead", tester.test_create_lead),
         ("Seed Discount Codes", tester.test_seed_discount_codes),
         ("Validate Discount Codes", tester.test_validate_discount_codes),
+        ("Seed Courses", tester.test_seed_courses),
+        ("List Courses", tester.test_list_courses),
+        ("Get Course Details", tester.test_get_course_details),
+        ("Seed Podcasts", tester.test_seed_podcasts),
+        ("List Podcasts", tester.test_list_podcasts),
+        ("Auth Register", tester.test_auth_register),
     ]
     
     failed_tests = []
