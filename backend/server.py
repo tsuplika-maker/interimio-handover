@@ -13,6 +13,14 @@ from jose import jwt, JWTError
 from passlib.context import CryptContext
 import random
 
+# Optional SendGrid import (email sending)
+try:
+    from sendgrid import SendGridAPIClient
+    from sendgrid.helpers.mail import Mail
+    HAS_SENDGRID = True
+except Exception:  # pragma: no cover
+    HAS_SENDGRID = False
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -80,6 +88,33 @@ def create_access_token(sub: str, extra: Dict) -> str:
         **extra,
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
+
+
+def send_email_code(to_email: str, code: str) -> bool:
+    """Send OTP code via SendGrid if configured. Returns True if sent."""
+    if not SENDGRID_API_KEY or not HAS_SENDGRID:
+        return False
+    try:
+        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        message = Mail(
+            from_email=SENDER_EMAIL,
+            to_emails=to_email,
+            subject="Your Interimio verification code",
+            html_content=f"""
+                <div style='font-family: Montserrat, Arial; line-height:1.6'>
+                  <h2 style='margin:0 0 8px'>Verify your email</h2>
+                  <p>Your one-time verification code is:</p>
+                  <div style='font-size:28px;font-weight:700;background:#0b6bcb;color:#fff;padding:12px 16px;border-radius:8px;display:inline-block;letter-spacing:3px'>{code}</div>
+                  <p style='margin-top:12px'>This code expires in 10 minutes. If you didn’t request it, you can ignore this message.</p>
+                </div>
+            """,
+        )
+        resp = sg.send(message)
+        logger.info(f"SendGrid sent status={resp.status_code}")
+        return 200 <= getattr(resp, "status_code", 500) < 300
+    except Exception as e:  # pragma: no cover
+        logger.error(f"SendGrid send failed: {e}")
+        return False
 
 
 async def get_current_user(request: Request) -> Dict:
@@ -438,9 +473,9 @@ async def register(input: RegisterInput):
         "created_at": now_iso(),
     }
     await db.otps.insert_one(otp)
-    if EMAIL_DEV_MODE == "true":
+    sent = send_email_code(input.email, code)
+    if EMAIL_DEV_MODE == "true" or not sent:
         logger.info(f"[DEV OTP] Email code for {input.email}: {code}")
-    # If SENDGRID configured, send mail (omitted for MVP)
     return {"user_id": user["id"], "next": "verify_email"}
 
 
@@ -462,7 +497,8 @@ async def send_otp(req: OTPRequest):
         "used": False,
         "created_at": now_iso(),
     })
-    if EMAIL_DEV_MODE == "true":
+    sent = send_email_code(user['email'], code)
+    if EMAIL_DEV_MODE == "true" or not sent:
         logger.info(f"[DEV OTP] Email code for {user['email']}: {code}")
     return {"sent": True}
 
