@@ -117,8 +117,12 @@ function SearchBar({ onChange, values }) {
 }
 
 function ManagerCard({ m, onRequest, ensureAuth }) {
-  const onClickRequest = () => {
-    if (!ensureAuth()) return; // will open auth if needed
+  const [open, setOpen] = useState(false);
+  const onClickRequest = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!ensureAuth()) return;
+    setOpen(true);
   };
   return (
     <Card className="card-hover">
@@ -141,11 +145,9 @@ function ManagerCard({ m, onRequest, ensureAuth }) {
         </div>
         <p className="mt-3 text-sm text-muted-foreground">{m.bio}</p>
         <div className="mt-4 flex justify-end">
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button className="btn-primary" onClick={onClickRequest}>Request</Button>
-            </DialogTrigger>
-            <RequestDialog manager={m} onRequest={onRequest} />
+          <Button className="btn-primary" onClick={onClickRequest}>Request</Button>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <RequestDialog manager={m} onRequest={() => { setOpen(false); onRequest && onRequest(); }} />
           </Dialog>
         </div>
       </CardContent>
