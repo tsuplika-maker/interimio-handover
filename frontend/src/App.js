@@ -658,7 +658,7 @@ function CourseDialog({ courseId, ensureAnyVerified }) {
   );
 }
 
-function PodcastAddDialog({ onAdded, canAdd }) {
+function PodcastAddDialog({ onAdded }) {
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
   const [url, setUrl] = useState("");
@@ -666,7 +666,7 @@ function PodcastAddDialog({ onAdded, canAdd }) {
   const submit = async () => {
     try {
       const token = localStorage.getItem("access_token");
-      await axios.post(`${API}/podcasts`, { title, description: desc, spotify_url: url }, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.post(`${API}/podcasts`, { title, description: desc, podigee_iframe_url: url }, { headers: { Authorization: `Bearer ${token}` } });
       toast.success("Episode added");
       onAdded && onAdded();
     } catch (e) {
@@ -678,7 +678,7 @@ function PodcastAddDialog({ onAdded, canAdd }) {
     <DialogContent className="sm:max-w-lg">
       <DialogHeader>
         <DialogTitle>Add episode</DialogTitle>
-        <DialogDescription>Title, description and Spotify embed link</DialogDescription>
+        <DialogDescription>Paste Podigee iframe URL (ends with /embed)</DialogDescription>
       </DialogHeader>
       <div className="grid gap-3">
         <div>
@@ -690,8 +690,8 @@ function PodcastAddDialog({ onAdded, canAdd }) {
           <Textarea value={desc} onChange={e => setDesc(e.target.value)} />
         </div>
         <div>
-          <Label>Spotify embed URL</Label>
-          <Input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://open.spotify.com/embed/episode/..." />
+          <Label>Podigee iframe URL</Label>
+          <Input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://yourpodcast.podigee.io/1-episode/embed" />
         </div>
         <div className="flex justify-end"><Button className="btn-primary" onClick={submit}>Save</Button></div>
       </div>
@@ -711,7 +711,7 @@ function PodcastSection({ user, ensureLoginOnly }) {
       setEps(res.data || []);
       if (!selected && res.data && res.data.length) setSelected(res.data[0]);
     } catch (e) {
-      // likely not logged in
+      // not logged in or error
     }
   };
   useEffect(() => { if (user) load(); }, [user]);
@@ -742,7 +742,7 @@ function PodcastSection({ user, ensureLoginOnly }) {
         <div className="flex items-end justify-between">
           <div>
             <h2 className="text-2xl font-semibold">Interimio Podcast</h2>
-            <p className="text-sm text-muted-foreground">Monthly talks with clients and leaders</p>
+            <p className="text-sm text-muted-foreground">Member area — Podigee player</p>
           </div>
           <div className="flex gap-2">
             <button className="btn-primary" onClick={seed}>Add sample episodes</button>
@@ -758,7 +758,7 @@ function PodcastSection({ user, ensureLoginOnly }) {
           <div className="lg:col-span-2">
             {selected ? (
               <div className="aspect-video w-full overflow-hidden rounded-md">
-                <iframe title={selected.title} src={selected.spotify_url} width="100%" height="100%" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>
+                <iframe title={selected.title} src={selected.podigee_iframe_url} width="100%" height="100%" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>
               </div>
             ) : (
               <div className="text-sm opacity-70">No episode selected</div>

@@ -280,11 +280,11 @@ class ProgressUpdate(BaseModel):
     completed: bool = True
 
 
-# Podcast
+# Podcast (Podigee)
 class PodcastEpisodeCreate(BaseModel):
     title: str
     description: Optional[str] = None
-    spotify_url: str
+    podigee_iframe_url: str
     publish_date: Optional[str] = Field(default_factory=lambda: datetime.now(timezone.utc).date().isoformat())
 
 
@@ -726,14 +726,14 @@ async def my_enrollments(user=Depends(get_current_user)):
     return out
 
 
-# ---------------------- Podcast ----------------------
+# ---------------------- Podcast (Podigee) ----------------------
 @api_router.post("/podcasts/seed")
 async def seed_podcasts():
     if await db.podcasts.count_documents({}) > 0:
         return {"created": 0}
     eps = [
-        PodcastEpisode(title="Interim Leadership — Episode 1", description="Kickoff with a DAX client on rapid transformation.", spotify_url="https://open.spotify.com/embed/episode/6rqhFgbbKwnb9MLmUQDhG6"),
-        PodcastEpisode(title="Turnarounds in 90 Days", description="High-profile CFO on cash discipline.", spotify_url="https://open.spotify.com/embed/episode/2cYVEtLFK9pFQf3VqM0J8G"),
+        PodcastEpisode(title="Interim Leadership — Episode 1", description="Kickoff with a DAX client on rapid transformation.", podigee_iframe_url="https://example.podigee.io/1-episode/embed"),
+        PodcastEpisode(title="Turnarounds in 90 Days", description="High-profile CFO on cash discipline.", podigee_iframe_url="https://example.podigee.io/2-episode/embed"),
     ]
     await db.podcasts.insert_many([prepare_for_mongo(e.model_dump()) for e in eps])
     return {"created": len(eps)}
@@ -748,16 +748,21 @@ async def list_podcasts(user=Depends(get_current_user)):
 class PodcastCreateInput(BaseModel):
     title: str
     description: Optional[str] = None
-    spotify_url: str
+    podigee_iframe_url: str
     publish_date: Optional[str] = None
 
 
 @api_router.post("/podcasts", response_model=PodcastEpisode)
 async def create_podcast(ep: PodcastCreateInput, user=Depends(get_current_user)):
-    # Allow only managers to add episodes for now
+    # Allow only managers to add episodes
     if user.get("role") != "manager":
         raise HTTPException(status_code=403, detail="Manager role required to add episodes")
-    payload = PodcastEpisode(**{**ep.model_dump(), **({"publish_date": ep.publish_date} if ep.publish_date else {})})
+    payload = PodcastEpisode(
+        title=ep.title,
+        description=ep.description,
+        podigee_iframe_url=ep.podigee_iframe_url,
+        publish_date=ep.publish_date or datetime.now(timezone.utc).date().isoformat(),
+    )
     await db.podcasts.insert_one(prepare_for_mongo(payload.model_dump()))
     return payload
 
