@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from "./components/ui/textarea.jsx";
 import { Calendar } from "./components/ui/calendar.jsx";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "./components/ui/input-otp.jsx";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select.jsx";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -74,7 +75,7 @@ function Header({ openLogin, openRegister, user, logout }) {
   );
 }
 
-function Hero() {
+function Hero({ ensureLoginOnly }) {
   const heroUrl = "https://images.unsplash.com/39/lIZrwvbeRuuzqOoWJUEn_Photoaday_CSD%20(1%20of%201)-5.jpg";
   return (
     <section className="relative hero-bg" style={{ backgroundImage: `url(${heroUrl})` }}>
@@ -85,7 +86,7 @@ function Hero() {
           <p className="mt-4 text-lg opacity-90">Browse vetted leaders, filter by skills and rates, and submit a request. Clients pay a 20% service fee per day of engagement.</p>
           <div className="mt-6 flex gap-3">
             <a href="#browse"><button className="btn-primary">Browse managers</button></a>
-            <a href="#learn"><button className="btn-primary" style={{background:"#0a5db0"}}>Learning</button></a>
+            <button className="btn-primary" style={{background:"#0a5db0"}} onClick={ensureLoginOnly}>Member area</button>
           </div>
         </div>
       </div>
@@ -492,20 +493,47 @@ function LoginDialog({ onDone, doLogin }) {
   );
 }
 
-function LearningSection({ ensureAnyVerified }) {
+function LearningSection({ ensureAnyVerified, user, ensureLoginOnly }) {
   const [courses, setCourses] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [level, setLevel] = useState("all");
+  const [topic, setTopic] = useState("");
 
   const load = async () => {
-    const res = await axios.get(`${API}/courses`);
-    setCourses(res.data || []);
+    try {
+      const params = new URLSearchParams();
+      if (level) params.append("level", level);
+      if (topic) params.append("tag", topic);
+      const res = await axios.get(`${API}/courses?${params.toString()}`, { headers: user ? { Authorization: `Bearer ${localStorage.getItem("access_token")}` } : {} });
+      setCourses(res.data || []);
+    } catch (e) {
+      console.error(e);
+    }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { if (user) load(); }, [user, level, topic]);
 
   const seed = async () => {
     await axios.post(`${API}/courses/seed`);
     await load();
   };
+
+  if (!user) {
+    return (
+      <section id="learn" className="section">
+        <div className="mx-auto max-w-7xl px-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Learning platform</CardTitle>
+              <CardDescription>Login to access courses and lessons</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button className="btn-primary" onClick={ensureLoginOnly}>Login to access</Button>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section id="learn" className="section">
@@ -516,6 +544,24 @@ function LearningSection({ ensureAnyVerified }) {
             <p className="text-sm text-muted-foreground">Courses, lessons, and progress tracking</p>
           </div>
           <button className="btn-primary" onClick={seed}>Add sample courses</button>
+        </div>
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <Label>Topic</Label>
+            <Input placeholder="e.g. Leadership" value={topic} onChange={(e) => setTopic(e.target.value)} />
+          </div>
+          <div>
+            <Label>Level</Label>
+            <Select value={level} onValueChange={setLevel}>
+              <SelectTrigger className="w-full"><SelectValue placeholder="All" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="Beginner">Beginner</SelectItem>
+                <SelectItem value="Intermediate">Intermediate</SelectItem>
+                <SelectItem value="Advanced">Advanced</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {courses.map(c => (
@@ -551,7 +597,8 @@ function CourseDialog({ courseId, ensureAnyVerified }) {
 
   const load = async (id) => {
     if (!id) return;
-    const res = await axios.get(`${API}/courses/${id}`);
+    const token = localStorage.getItem("access_token");
+    const res = await axios.get(`${API}/courses/${id}`, { headers: { Authorization: `Bearer ${token}` } });
     setCourse(res.data.course);
     setLessons(res.data.lessons || []);
   };
@@ -611,18 +658,83 @@ function CourseDialog({ courseId, ensureAnyVerified }) {
   );
 }
 
-function PodcastSection() {
+function PodcastAddDialog({ onAdded, canAdd }) {
+  const [title, setTitle] = useState("");
+  const [desc, setDesc] = useState("");
+  const [url, setUrl] = useState("");
+
+  const submit = async () => {
+    try {
+      const token = localStorage.getItem("access_token");
+      await axios.post(`${API}/podcasts`, { title, description: desc, spotify_url: url }, { headers: { Authorization: `Bearer ${token}` } });
+      toast.success("Episode added");
+      onAdded && onAdded();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not add episode (manager only)");
+    }
+  };
+
+  return (
+    <DialogContent className="sm:max-w-lg">
+      <DialogHeader>
+        <DialogTitle>Add episode</DialogTitle>
+        <DialogDescription>Title, description and Spotify embed link</DialogDescription>
+      </DialogHeader>
+      <div className="grid gap-3">
+        <div>
+          <Label>Title</Label>
+          <Input value={title} onChange={e => setTitle(e.target.value)} />
+        </div>
+        <div>
+          <Label>Description</Label>
+          <Textarea value={desc} onChange={e => setDesc(e.target.value)} />
+        </div>
+        <div>
+          <Label>Spotify embed URL</Label>
+          <Input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://open.spotify.com/embed/episode/..." />
+        </div>
+        <div className="flex justify-end"><Button className="btn-primary" onClick={submit}>Save</Button></div>
+      </div>
+    </DialogContent>
+  );
+}
+
+function PodcastSection({ user, ensureLoginOnly }) {
   const [eps, setEps] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [openAdd, setOpenAdd] = useState(false);
 
   const load = async () => {
-    const res = await axios.get(`${API}/podcasts`);
-    setEps(res.data || []);
-    if (!selected && res.data && res.data.length) setSelected(res.data[0]);
+    try {
+      const headers = user ? { Authorization: `Bearer ${localStorage.getItem("access_token")}` } : {};
+      const res = await axios.get(`${API}/podcasts`, { headers });
+      setEps(res.data || []);
+      if (!selected && res.data && res.data.length) setSelected(res.data[0]);
+    } catch (e) {
+      // likely not logged in
+    }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { if (user) load(); }, [user]);
 
   const seed = async () => { await axios.post(`${API}/podcasts/seed`); await load(); };
+
+  if (!user) {
+    return (
+      <section id="podcast" className="section">
+        <div className="mx-auto max-w-7xl px-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Interimio Podcast</CardTitle>
+              <CardDescription>Login to access the member-only podcast area</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button className="btn-primary" onClick={ensureLoginOnly}>Login to access</Button>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section id="podcast" className="section">
@@ -632,7 +744,15 @@ function PodcastSection() {
             <h2 className="text-2xl font-semibold">Interimio Podcast</h2>
             <p className="text-sm text-muted-foreground">Monthly talks with clients and leaders</p>
           </div>
-          <button className="btn-primary" onClick={seed}>Add sample episodes</button>
+          <div className="flex gap-2">
+            <button className="btn-primary" onClick={seed}>Add sample episodes</button>
+            <Dialog open={openAdd} onOpenChange={setOpenAdd}>
+              <DialogTrigger asChild>
+                <Button className="btn-primary">Add episode</Button>
+              </DialogTrigger>
+              <PodcastAddDialog onAdded={() => { setOpenAdd(false); load(); }} />
+            </Dialog>
+          </div>
         </div>
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
@@ -706,19 +826,24 @@ function App() {
     return true;
   };
 
+  const ensureLoginOnly = () => {
+    if (!user) { setOpenLogin(true); return false; }
+    return true;
+  };
+
   return (
     <div className="App">
       <BrowserRouter>
         <Header user={user} logout={logout} openLogin={() => setOpenLogin(true)} openRegister={() => setOpenRegister(true)} />
-        <Hero />
+        <Hero ensureLoginOnly={ensureLoginOnly} />
         <div className="section">
           <div className="mx-auto max-w-7xl px-6 grid gap-6 lg:grid-cols-3">
             <div className="lg:col-span-2"><Directory ensureAuth={ensureAuth} /></div>
             <div className="lg:col-span-1"><ManagerPricing ensureManagerAuth={ensureManagerAuth} /></div>
           </div>
         </div>
-        <LearningSection ensureAnyVerified={ensureAnyVerified} />
-        <PodcastSection />
+        <LearningSection user={user} ensureAnyVerified={ensureAnyVerified} ensureLoginOnly={ensureLoginOnly} />
+        <PodcastSection user={user} ensureLoginOnly={ensureLoginOnly} />
         <Footer />
 
         <Dialog open={openLogin} onOpenChange={setOpenLogin}>

@@ -655,16 +655,23 @@ async def seed_courses():
 
 
 @api_router.get("/courses", response_model=List[Course])
-async def list_courses(q: Optional[str] = Query(None)):
+async def list_courses(q: Optional[str] = Query(None), level: Optional[str] = Query(None), tag: Optional[str] = Query(None), user=Depends(get_current_user)):
     filt: Dict = {"published": True}
+    ors = []
     if q:
-        filt["$or"] = [{"title": {"$regex": q, "$options": "i"}}, {"tags": {"$regex": q, "$options": "i"}}]
+        ors.extend([{"title": {"$regex": q, "$options": "i"}}, {"tags": {"$regex": q, "$options": "i"}}])
+    if tag:
+        ors.append({"tags": {"$regex": tag, "$options": "i"}})
+    if ors:
+        filt["$or"] = ors
+    if level and level.lower() != "all":
+        filt["level"] = {"$regex": f"^{level}$", "$options": "i"}
     docs = await db.courses.find(filt).sort("created_at", -1).to_list(length=50)
     return [Course(**d) for d in docs]
 
 
 @api_router.get("/courses/{course_id}")
-async def get_course(course_id: str):
+async def get_course(course_id: str, user=Depends(get_current_user)):
     course = await db.courses.find_one({"id": course_id})
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
@@ -683,12 +690,6 @@ async def enroll(input: EnrollmentCreate, user=Depends(get_current_user)):
     enr = Enrollment(user_id=user["id"], course_id=input.course_id)
     await db.enrollments.insert_one(prepare_for_mongo(enr.model_dump()))
     return enr
-
-
-def compute_progress_percent(course_id: str, completed_len: int) -> int:
-    # progress = completed lessons / total lessons * 100 (rounded)
-    # This function is synchronous; reading total lessons will be done in endpoint
-    return 0
 
 
 @api_router.post("/enrollments/progress")
@@ -739,9 +740,26 @@ async def seed_podcasts():
 
 
 @api_router.get("/podcasts", response_model=List[PodcastEpisode])
-async def list_podcasts():
+async def list_podcasts(user=Depends(get_current_user)):
     docs = await db.podcasts.find({}).sort("created_at", -1).to_list(length=50)
     return [PodcastEpisode(**d) for d in docs]
+
+
+class PodcastCreateInput(BaseModel):
+    title: str
+    description: Optional[str] = None
+    spotify_url: str
+    publish_date: Optional[str] = None
+
+
+@api_router.post("/podcasts", response_model=PodcastEpisode)
+async def create_podcast(ep: PodcastCreateInput, user=Depends(get_current_user)):
+    # Allow only managers to add episodes for now
+    if user.get("role") != "manager":
+        raise HTTPException(status_code=403, detail="Manager role required to add episodes")
+    payload = PodcastEpisode(**{**ep.model_dump(), **({"publish_date": ep.publish_date} if ep.publish_date else {})})
+    await db.podcasts.insert_one(prepare_for_mongo(payload.model_dump()))
+    return payload
 
 
 # Include router and middleware
