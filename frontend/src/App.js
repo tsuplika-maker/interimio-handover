@@ -20,6 +20,8 @@ import { AuthContext } from "./context/AuthContext.jsx";
 import ManagerDetailPage from "./pages/ManagerDetailPage.jsx";
 import ManagerProfilePage from "./pages/ManagerProfilePage.jsx";
 import AdminPage from "./pages/AdminPage.jsx";
+import MessagesPage from "./pages/MessagesPage.jsx";
+import { MessageSquare } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -57,6 +59,24 @@ function useAuth() {
   return { user, setUser, login, logout };
 }
 
+function UnreadBadge({ user }) {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    if (!user) { setN(0); return; }
+    const load = () => axios.get(`${API}/conversations/unread-count`, { headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` } }).then((r) => setN(r.data.unread || 0)).catch(() => {});
+    load();
+    const t = setInterval(load, 15000);
+    return () => clearInterval(t);
+  }, [user]);
+  if (!user) return null;
+  return (
+    <Link to="/messages" className="relative inline-flex items-center gap-1 text-sm hover:text-[var(--brand-blue)]" data-testid="nav-messages">
+      <MessageSquare className="h-4 w-4" /> Messages
+      {n > 0 && <span className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--brand-blue)] px-1.5 text-[11px] font-semibold text-white" data-testid="nav-messages-unread">{n}</span>}
+    </Link>
+  );
+}
+
 function Header({ openLogin, openRegister, user, logout }) {
   return (
     <header className="sticky top-0 z-40 bg-white/70 backdrop-blur border-b">
@@ -72,6 +92,7 @@ function Header({ openLogin, openRegister, user, logout }) {
           </nav>
         </div>
         <div className="flex items-center gap-3">
+          <UnreadBadge user={user} />
           {user ? (
             <>
               <span className="text-sm opacity-80 hidden sm:inline" data-testid="header-user">{user.email} • {user.role} {user.email_verified ? "✓" : "(verify)"}</span>
@@ -796,6 +817,7 @@ function App() {
             <Route path="/managers/:id" element={<ManagerDetailPage />} />
             <Route path="/profile" element={<ManagerProfilePage />} />
             <Route path="/admin" element={<AdminPage />} />
+            <Route path="/messages" element={<MessagesPage />} />
           </Routes>
           <Footer />
 

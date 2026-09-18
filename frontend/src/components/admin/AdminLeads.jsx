@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Download, RefreshCw } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Download, RefreshCw, MessageSquare } from "lucide-react";
 import { Button } from "../ui/button.jsx";
 import { Input } from "../ui/input.jsx";
 import { Badge } from "../ui/badge.jsx";
@@ -95,6 +96,7 @@ export function AdminLeads() {
                   <div className="font-medium">{l.company_name}</div>
                   <div className="text-xs opacity-70">{l.contact_name} · <a className="underline" href={`mailto:${l.email}`}>{l.email}</a></div>
                   {l.message && <div className="text-xs opacity-60 mt-1 max-w-xs truncate" title={l.message}>{l.message}</div>}
+                  {l.conversation_id && <Link to={`/messages?c=${l.conversation_id}`} className="text-xs text-[var(--brand-blue)] underline inline-flex items-center gap-1 mt-1" data-testid={`admin-lead-chat-${l.id}`}><MessageSquare className="h-3 w-3" />Open chat</Link>}
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-sm">{l.days} × €{l.daily_rate_eur}</TableCell>
                 <TableCell className="font-semibold whitespace-nowrap">€{Number(l.fee_eur).toLocaleString("de-DE")}</TableCell>

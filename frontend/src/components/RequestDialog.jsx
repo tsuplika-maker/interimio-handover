@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "./ui/button.jsx";
 import { Input } from "./ui/input.jsx";
@@ -9,6 +10,7 @@ import { Calendar } from "./ui/calendar.jsx";
 import { api, errMsg } from "../lib/api";
 
 export function RequestDialog({ manager, onRequest }) {
+  const navigate = useNavigate();
   const [days, setDays] = useState(5);
   const [startDate, setStartDate] = useState(undefined);
   const [message, setMessage] = useState("");
@@ -31,7 +33,11 @@ export function RequestDialog({ manager, onRequest }) {
         message,
       };
       const res = await api.post("/leads", payload);
-      toast.success(`Request sent. Estimated service fee: €${res.data.fee_eur}`);
+      toast.success(`Request sent. Estimated service fee: €${res.data.fee_eur}`, {
+        description: "Continue the conversation with the manager in Messages.",
+        action: res.data.conversation_id ? { label: "Open chat", onClick: () => navigate(`/messages?c=${res.data.conversation_id}`) } : undefined,
+        duration: 8000,
+      });
       onRequest && onRequest();
     } catch (e) {
       toast.error(errMsg(e, "Could not send request"));

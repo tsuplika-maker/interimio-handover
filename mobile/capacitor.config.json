@@ -1,0 +1,11 @@
+{
+  "appId": "com.interimio.app",
+  "appName": "Interimio",
+  "webDir": "../frontend/build",
+  "server": { "androidScheme": "https" },
+  "ios": { "contentInset": "always", "backgroundColor": "#06182b" },
+  "android": { "backgroundColor": "#06182b" },
+  "plugins": {
+    "SplashScreen": { "launchShowDuration": 1200, "backgroundColor": "#06182b", "showSpinner": false }
+  }
+}
