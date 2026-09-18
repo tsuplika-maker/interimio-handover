@@ -369,7 +369,7 @@ class ProgressUpdate(BaseModel):
 class PodcastEpisodeCreate(BaseModel):
     title: str
     description: Optional[str] = None
-    podigee_iframe_url: str
+    podigee_iframe_url: Optional[str] = None
     publish_date: Optional[str] = Field(default_factory=lambda: datetime.now(timezone.utc).date().isoformat())
 
 
@@ -623,10 +623,9 @@ async def notify_participants(conv: Dict, sender: Dict, preview: str):
             <p><b>{conv.get('title')}</b></p>
             <p style='background:#f2f6fb;padding:12px;border-radius:8px'>{redact_contacts(preview)[:300]}</p>
             <p><a href='{FRONTEND_URL}/messages?c={conv['id']}' style='background:#0b6bcb;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none'>Open conversation</a></p></div>"""
-        if send_email(u["email"], f"New message: {conv.get('title')}", html):
-            notified[rid] = now_iso()
-        else:
+        if not send_email(u["email"], f"New message: {conv.get('title')}", html):
             logger.info(f"[DEV MAIL] message notification to {u['email']} for conv {conv['id']}")
+        notified[rid] = now_iso()
     await db.conversations.update_one({"id": conv["id"]}, {"$set": {"notified_at": notified}})
 
 

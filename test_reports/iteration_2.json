@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 2 focused on the new Messaging feature (in-platform chat: lead conversations, support conversations, contact-redaction w/ admin release, unread counts, notifications). Backend: 32/32 pytest passing — 16 regression + 16 new messaging tests (test_messaging.py) covering conversation creation from POST /api/leads (returns conversation_id, participants=client+manager, intro message posted), listing scoped to participants for client/manager and ALL for admin (with participants[], title, last_message_preview, unread), GET messages redaction (email/phone/URL replaced by '[hidden until release]' + redacted=true) for non-admin lead conversation, admin sees originals, PATCH /release forbidden for non-admin (403) and toggling reveals originals to non-admins, support conversations never redacted, POST message increments unread for other participants + admin_unread, GET messages resets my unread, GET /conversations/unread-count aggregates correctly for user and admin, non-participant → 404, unverified user → 403, empty body → 422, POST /conversations/support idempotent for manager/client and 400 for admin. Frontend: all 7 UI scenarios PASS — messages-login-required when logged out; nav-messages visible; client sees new conversation with redaction-banner and email/phone hidden; manager unread badge shows and shows the new conv, sends reply via textarea and Enter key; admin sees release-toggle, toggling ON removes redaction-banner and admin can send messages; contact-team-btn opens support conversation with title 'Interimio team ↔ <email>' and can send; admin /admin AdminLeads row 'admin-lead-chat-{id}' link navigates to /messages?c={id} with thread selected; mobile 390px shows list first, thread-back-btn returns to list, no horizontal overflow.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/podcasts", "issue": "Unrelated to messaging: 500 due to Pydantic Podcast validation error — an existing podcast document in DB is missing required field 'podigee_iframe_url'. Either make the field Optional or backfill DB. Reproduced from backend.err.log during UI test navigation."},
+      {"endpoint": "notify_participants (message notifications)", "issue": "SendGrid API key in backend/.env returns HTTP 401 Unauthorized for every send — falls back to '[DEV MAIL]' log as intended. Fine for the dev preview but no real emails go out; either mark EMAIL_DEV_MODE=true or provide a valid key for production."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "MessagesPage layout", "issues": ["On very short viewport heights the thread's inner scroll region may overlap header — not a bug on the tested viewports (1280x900 and 390x844)."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_interimio.py",
+    "/app/backend/tests/test_messaging.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/tests/setup_msg_users.py"
+  ],
+  "action_items": [
+    "OPTIONAL: Make Podcast.podigee_iframe_url Optional (or backfill legacy podcast docs) to fix unrelated /api/podcasts 500 seen in backend logs.",
+    "OPTIONAL: The useAuth issue reported in iteration_1 (header not updating right after login without reload) is unchanged and still applies — UI flows in this iteration were exercised by injecting the JWT into localStorage and reloading, which is a documented workaround."
+  ],
+  "critical_code_review_comments": [
+    "Messaging endpoints correctly use 404 (not 403) for non-participant access, which is a good info-leak defense.",
+    "message_view redaction runs against every fetch — cost is fine for <=1000 messages/conv, but consider caching redacted body per message if scale grows.",
+    "notify_participants throttles per recipient 10 min via notified_at map on the conversation; this is only bumped when SendGrid returns True, so with the current invalid SendGrid key throttling never kicks in and each send retries SendGrid. Consider bumping notified_at even when [DEV MAIL] path is taken to avoid log spam.",
+    "POST /api/conversations/support does not require email verification — an unverified user can create a support conversation but then cannot post to it (verify guard on send_message). Acceptable, but consider gating the create too for consistency.",
+    "CORS still uses '*' with credentials disabled by playbook — carry-over from iteration_1."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_messaging.py (new)",
+    "/app/tests/setup_msg_users.py (new)"
+  ],
+  "success_rate": {"backend": "100% (32/32)", "frontend": "100% (7/7 messaging UI scenarios)"},
+  "test_credentials": "Admin: admin@interimio.com / Interimio-Admin-3fb01e39. Ephemeral test users are prefixed TEST_msg_ and TEST_uiMsg_ and created via API + OTP fetched from mongo.otps.",
+  "seed_data_creation": "Created 2 verified manager users (one owns a manager profile), 3 verified client users, 1 unverified client user, 1 lead + 1 support conversation used for UI + backend messaging tests. All prefixed TEST_msg_ / TEST_uiMsg_. Handles in /app/tests/msg_users.json (last run).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run: pytest /app/backend/tests/test_interimio.py /app/backend/tests/test_messaging.py -v. For UI flows use /app/tests/setup_msg_users.py to bootstrap users + manager profile, then inject tokens into localStorage as the sample script does. All messaging data-testids are stable: conversation-list, conversation-item-{id}, conversation-unread-{id}, message-thread, thread-title, thread-back-btn, redaction-banner, release-toggle, release-toggle-label, message-list, message-{id}, message-input, message-send-btn, contact-team-btn, nav-messages, nav-messages-unread, messages-login-required, admin-lead-chat-{leadId}, thread-admin-link.",
+  "rca of the issue": "N/A — no failing tests. Ancillary /api/podcasts 500 RCA: legacy Podcast documents in Mongo don't have podigee_iframe_url; the Podcast Pydantic model marks the field as required, so response validation blows up during list_podcasts. Fix: `podigee_iframe_url: Optional[str] = None` on Podcast or migrate the docs to add the field."
+}

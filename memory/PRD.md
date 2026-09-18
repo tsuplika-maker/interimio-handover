@@ -22,7 +22,14 @@ users, otps, managers (user_id, industries, languages, years_experience, linkedi
 
 ## Implementiert
 - 2025-08: Manager-Verzeichnis + Filter, Lead-Flow mit 20 % Gebühr, JWT-Auth + Rollen + E-Mail-OTP, Lernplattform, Podcast (Podigee), Member-Gating, Kurs-Filter.
-- 2026-06 (diese Session):
+- 2026-06 (Messaging + Mobile-Vorbereitung):
+  - **Messaging** `/messages`: Lead-Chat Client↔Manager (auto bei Anfrage, Orga liest/schreibt mit), Support-Chat jeder↔Orga (`POST /api/conversations/support`), Posteingang mit Ungelesen-Zähler im Header (Polling 15 s / Thread 5 s), E-Mail-Benachrichtigung (SendGrid, 10-min-Throttle), **Kontaktdaten-Redaktion** (E-Mail/Telefon/URLs → „[hidden until release]“) bis Admin per Toggle freigibt (`PATCH /api/conversations/{id}/release`). Kein Manager↔Manager.
+  - Admin-Lead-Inbox verlinkt „Open chat“; Request-Toast mit „Open chat“.
+  - **PWA**: manifest.json, Icons (192/512/180), Apple-Meta-Tags, Titel. **Capacitor-Projekt** `/app/mobile` (iOS + Android generiert, appId com.interimio.app, Icon/Splash-Quellen, README mit Store-Anleitung). Push-Notifications noch nicht.
+  - Fix: Podcast `podigee_iframe_url` optional (500 bei Alt-Daten).
+  - Tests: `/app/backend/tests/test_messaging.py` (16) + Regression (16) grün; Report `/app/test_reports/iteration_2.json`.
+  - ⚠️ **SendGrid: „Maximum credits exceeded“ (401)** – Konto-Kontingent aufgebraucht → aktuell gehen KEINE OTP-/Benachrichtigungs-Mails raus (Fallback: Code im Backend-Log). User muss SendGrid-Plan aufstocken.
+- 2026-06 (Admin/Detail/Free):
   - Manager-Preise entfernt → kostenlos; "Interimio Pro – Coming soon"-Karte mit Benefits + Warteliste (`POST /api/pro/interest`, optionaler Rabattcode → Redemption).
   - Admin-Rolle + Seeding, `require_admin`. Admin-Seite `/admin`: Stats, Lead-Inbox (Filter, Suche, Status new/contacted/qualified/won/lost, CSV-Export), Rabattcodes (anlegen, aktiv/inaktiv, löschen, Nutzungen).
   - Manager-Detailseiten `/managers/:id` mit Track Record, Branchen, Sprachen, Verfügbarkeit, LinkedIn, Gebührenrechner + Request-CTA.
@@ -31,7 +38,11 @@ users, otps, managers (user_id, industries, languages, years_experience, linkedi
   - Tests: `/app/backend/tests/test_interimio.py`, Report `/app/test_reports/iteration_1.json` (Backend 16/16, Frontend ok).
 
 ## Backlog
+- P0: SendGrid-Kontingent aufstocken (sonst keine OTP-Mails).
+- P1: PWA/Mobile-Optimierung (Bottom-Navigation, schnelle Suche, Touch-Layout) – vom User als nächster Schritt nach Messaging gewünscht.
+- P1: Push-Notifications in der App (@capacitor/push-notifications + FCM/APNs).
 - P1: Pro-Version (Preis festlegen, Stripe Checkout, Pro-Gating für Learning/Podcast-Vorab, Pro-Badge).
+- P2: Konto-Löschung (`DELETE /api/auth/me`) – App-Store-Pflicht.
 - P1: Manager-eigene Lead-Inbox (Anfragen an mich sehen/beantworten), E-Mail-Benachrichtigung bei neuer Anfrage.
 - P2: Podigee RSS-Auto-Import; echte Podigee-URL (User hat noch keine).
 - P2: UI-Copy auf Deutsch / i18n; Profilbild-Upload (Object Storage) statt URL.
