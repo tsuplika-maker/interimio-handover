@@ -26,9 +26,9 @@ const API = `${BACKEND_URL}/api`;
 
 function useAuth() {
   const [user, setUser] = useState(null);
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
 
   const me = async () => {
+    const token = localStorage.getItem("access_token");
     if (!token) return;
     try {
       const res = await axios.get(`${API}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
@@ -54,7 +54,7 @@ function useAuth() {
     setUser(null);
   };
 
-  return { user, setUser, token, login, logout };
+  return { user, setUser, login, logout };
 }
 
 function Header({ openLogin, openRegister, user, logout }) {
@@ -248,7 +248,7 @@ function ManagerJoinCard({ ensureManagerAuth, user }) {
   );
 }
 
-function Directory({ ensureAuth }) {
+function Directory({ ensureAuth, isAdmin }) {
   const [filters, setFilters] = useState({ q: "", location: "", minRate: "", maxRate: "" });
   const [managers, setManagers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -283,7 +283,7 @@ function Directory({ ensureAuth }) {
             <h2 className="text-2xl font-semibold">Browse interim managers</h2>
             <p className="text-sm text-muted-foreground">Search by title, skills, location, and rate.</p>
           </div>
-          <button className="btn-primary" onClick={async () => { await axios.post(`${API}/managers/seed`); toast.success("Sample profiles added"); fetchManagers(); }}>Add sample profiles</button>
+          <button className="btn-primary" onClick={async () => { await axios.post(`${API}/managers/seed`, {}, { headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` } }); toast.success("Sample profiles added"); fetchManagers(); }} hidden={!isAdmin} data-testid="seed-managers-btn">Add sample profiles</button>
         </div>
         <div className="mt-6">
           <SearchBar values={filters} onChange={setFilters} />
@@ -777,7 +777,7 @@ function App() {
       <Hero ensureLoginOnly={ensureLoginOnly} />
       <div className="section">
         <div className="mx-auto max-w-7xl px-6 grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2"><Directory ensureAuth={ensureAuth} /></div>
+          <div className="lg:col-span-2"><Directory ensureAuth={ensureAuth} isAdmin={user?.role === "admin"} /></div>
           <div className="lg:col-span-1"><ManagerJoinCard ensureManagerAuth={ensureManagerAuth} user={user} /></div>
         </div>
       </div>

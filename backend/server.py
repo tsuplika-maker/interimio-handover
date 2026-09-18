@@ -91,7 +91,7 @@ def verify_password(p: str, hashed: str) -> bool:
 def create_access_token(sub: str, extra: Dict) -> str:
     payload = {
         "sub": sub,
-        "exp": datetime.utcnow() + timedelta(minutes=ACCESS_MIN),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=ACCESS_MIN),
         **extra,
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
@@ -441,7 +441,7 @@ async def list_managers(
 
 
 @api_router.post("/managers/seed")
-async def seed_managers():
+async def seed_managers(admin=Depends(require_admin)):
     existing = await db.managers.count_documents({})
     if existing > 0:
         return {"created": 0, "message": "Managers already exist"}
@@ -801,8 +801,10 @@ async def verify_otp(req: OTPVerify):
     try:
         exp = datetime.fromisoformat(otp["expires_at"].replace("Z", "+00:00"))
     except Exception:
-        exp = datetime.utcnow() - timedelta(seconds=1)
-    if exp < datetime.utcnow():
+        exp = datetime.now(timezone.utc) - timedelta(seconds=1)
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="Code expired")
     # mark used
     await db.otps.update_one({"id": otp["id"]}, {"$set": {"used": True}})

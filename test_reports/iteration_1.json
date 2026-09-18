@@ -1,0 +1,39 @@
+{
+  "summary": "Backend: 16/16 pytest cases pass covering admin auth/stats/leads/CSV, discount codes CRUD (admin-only, uppercased, duplicate check), manager upsert, pro/interest with SHARE10 uses increment, lead creation and admin visibility, RBAC. Frontend: home shows manager-free-badge and manager-pro-card (no €299), manager detail page renders (name/rate/fee calculator updates on days change), Request-btn opens login dialog when logged out, back link works, admin login as admin@interimio.com succeeds and admin UI renders after page reload (nav-admin, stats, lead rows, status change persists after refresh, CSV export downloads interimio-leads-all.csv, discount codes tab loads, code creation via form works), /admin logged out shows admin-login-required, /admin as manager shows admin-forbidden, /profile shows Publish form with verification banner. Fixed one blocking backend TypeError (naive/aware datetime in verify-otp) so OTP verification for new users works.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/verify-otp", "issue": "TypeError comparing offset-naive datetime.utcnow() with offset-aware exp — fixed in-place (use datetime.now(timezone.utc) and normalize exp tz)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "useAuth in App.js", "issue": "After successful login, the header does not update to show nav-admin / role-specific links until a manual page reload. Root cause: token is read once from localStorage at render into a const; me() captures the stale (null) token from the closure at the time login() is called (setItem happens then me() is awaited with stale closure token). Fix: read localStorage.getItem('access_token') inside me() (or make token state) so the freshly stored token is used.", "selector": "[data-testid=\"nav-admin\"]", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/profile Available from", "issues": ["Uses native <input type=date> (browser default picker) instead of shadcn Calendar/DatePicker component."]},
+      {"screen": "Home", "issues": ["'Add sample profiles' seeding button appears to be publicly accessible on the home page — likely should be gated behind admin or removed for end users."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_interimio.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Fix useAuth so login() immediately triggers /auth/me with the new token (read token inside me or use useState for token). Without this the admin/manager-specific nav links never appear until reload — noticeable UX bug.",
+    "Consider guarding /api/managers/seed and the 'Add sample profiles' UI button behind admin auth."
+  ],
+  "critical_code_review_comments": [
+    "server.py verify_otp had naive/aware datetime comparison bug — patched to use datetime.now(timezone.utc); recommend also switching create_access_token payload 'exp' to use timezone-aware datetimes for consistency.",
+    "App.js useAuth relies on module-scope closure for token — see UI bug above.",
+    "POST /api/managers/seed is unauthenticated and can be called by anyone; ideally gate with require_admin like /api/discount-codes/seed.",
+    "AdminDiscountCodes create button label is 'Create' (not 'Create code') — minor doc/spec mismatch with test plan but functional.",
+    "CORS allow_origins is set from env with '*' default while allow_credentials=True — with '*' browsers reject credentialed requests; explicit origins should be configured per playbook."
+  ],
+  "updated_files": ["/app/backend/server.py", "/app/backend/tests/test_interimio.py"],
+  "success_rate": {"backend": "100%", "frontend": "~90% (one HIGH auth/UI refresh bug)"},
+  "test_credentials": "Admin admin@interimio.com / Interimio-Admin-3fb01e39 works.",
+  "seed_data_creation": "Created ephemeral TEST_ manager and client users via /api/auth/register + verify-otp (OTP fetched from mongo db.otps). Created and deleted a temporary discount code TESTCODE... . SHARE10/PARTNER50/VIP100 kept intact.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression file: /app/backend/tests/test_interimio.py. Run: pytest /app/backend/tests/test_interimio.py -v. Frontend admin flow requires page reload after login to see nav-admin unless the useAuth bug is fixed. Managers can login without email verification but cannot POST /api/managers until verified.",
+  "rca of the issue": "verify-otp: exp parsed via fromisoformat with 'Z' -> +00:00 became offset-aware; datetime.utcnow() is naive; Python 3 disallows the comparison → 500. Fix: normalize both to aware UTC. Header not updating after login: useAuth reads token via const at render; login() calls me() whose closure captured the pre-login token; setState from setUser inside me isn't reached because token check returns early. Fix: `const token = localStorage.getItem('access_token')` inside me() body, not at hook top."
+}
