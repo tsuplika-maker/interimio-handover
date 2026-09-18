@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import "./App.css";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { toast, Toaster } from "sonner";
+import { Sparkles, CheckCircle2, Shield } from "lucide-react";
 
 // shadcn components
 import { Button } from "./components/ui/button.jsx";
@@ -10,11 +11,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./com
 import { Input } from "./components/ui/input.jsx";
 import { Label } from "./components/ui/label.jsx";
 import { Badge } from "./components/ui/badge.jsx";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./components/ui/dialog.jsx";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "./components/ui/dialog.jsx";
 import { Textarea } from "./components/ui/textarea.jsx";
-import { Calendar } from "./components/ui/calendar.jsx";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "./components/ui/input-otp.jsx";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select.jsx";
+import { RequestDialog } from "./components/RequestDialog.jsx";
+import { AuthContext } from "./context/AuthContext.jsx";
+import ManagerDetailPage from "./pages/ManagerDetailPage.jsx";
+import ManagerProfilePage from "./pages/ManagerProfilePage.jsx";
+import AdminPage from "./pages/AdminPage.jsx";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -55,18 +60,27 @@ function useAuth() {
 function Header({ openLogin, openRegister, user, logout }) {
   return (
     <header className="sticky top-0 z-40 bg-white/70 backdrop-blur border-b">
-      <div className="mx-auto max-w-7xl px-6 py-3 flex items-center justify-between">
-        <div className="font-bold text-xl">Interimio</div>
+      <div className="mx-auto max-w-7xl px-6 py-3 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-6">
+          <Link to="/" className="font-bold text-xl" data-testid="header-logo">Interimio</Link>
+          <nav className="hidden md:flex items-center gap-4 text-sm">
+            <a href="/#browse" className="hover:text-[var(--brand-blue)]" data-testid="nav-managers">Managers</a>
+            <a href="/#learn" className="hover:text-[var(--brand-blue)]" data-testid="nav-learning">Learning</a>
+            <a href="/#podcast" className="hover:text-[var(--brand-blue)]" data-testid="nav-podcast">Podcast</a>
+            {user?.role === "manager" && <Link to="/profile" className="hover:text-[var(--brand-blue)]" data-testid="nav-my-profile">My profile</Link>}
+            {user?.role === "admin" && <Link to="/admin" className="inline-flex items-center gap-1 font-semibold text-[var(--brand-blue)]" data-testid="nav-admin"><Shield className="h-4 w-4" />Admin</Link>}
+          </nav>
+        </div>
         <div className="flex items-center gap-3">
           {user ? (
             <>
-              <span className="text-sm opacity-80">{user.email} • {user.role} {user.email_verified ? "✓" : "(verify)"}</span>
-              <button className="btn-primary" onClick={logout}>Logout</button>
+              <span className="text-sm opacity-80 hidden sm:inline" data-testid="header-user">{user.email} • {user.role} {user.email_verified ? "✓" : "(verify)"}</span>
+              <button className="btn-primary" data-testid="logout-btn" onClick={logout}>Logout</button>
             </>
           ) : (
             <>
-              <button className="btn-primary" onClick={openLogin}>Login</button>
-              <button className="btn-primary" onClick={openRegister}>Register</button>
+              <button className="btn-primary" data-testid="login-btn" onClick={openLogin}>Login</button>
+              <button className="btn-primary" data-testid="register-btn" onClick={openRegister}>Register</button>
             </>
           )}
         </div>
@@ -126,11 +140,13 @@ function ManagerCard({ m, onRequest, ensureAuth }) {
     setOpen(true);
   };
   return (
-    <Card className="card-hover">
+    <Card className="card-hover" data-testid={`manager-card-${m.id}`}>
       <CardHeader className="flex flex-row items-start gap-4">
-        <img src={m.image_url || "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40"} alt={m.name} className="h-16 w-16 rounded-lg object-cover" />
+        <Link to={`/managers/${m.id}`}>
+          <img src={m.image_url || "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40"} alt={m.name} className="h-16 w-16 rounded-lg object-cover" />
+        </Link>
         <div>
-          <CardTitle className="text-lg">{m.name}</CardTitle>
+          <CardTitle className="text-lg"><Link to={`/managers/${m.id}`} className="hover:text-[var(--brand-blue)]" data-testid={`manager-card-name-${m.id}`}>{m.name}</Link></CardTitle>
           <CardDescription>{m.title} · {m.location}</CardDescription>
           <div className="mt-2 flex flex-wrap gap-1">
             {(m.skills || []).slice(0,5).map((s, i) => (
@@ -145,8 +161,9 @@ function ManagerCard({ m, onRequest, ensureAuth }) {
           <div className="text-xl font-semibold">€{m.daily_rate_eur}</div>
         </div>
         <p className="mt-3 text-sm text-muted-foreground">{m.bio}</p>
-        <div className="mt-4 flex justify-end">
-          <Button className="btn-primary" onClick={onClickRequest}>Request</Button>
+        <div className="mt-4 flex justify-end gap-2">
+          <Link to={`/managers/${m.id}`}><Button variant="outline" data-testid={`manager-card-view-${m.id}`}>View profile</Button></Link>
+          <Button className="btn-primary" data-testid={`manager-card-request-${m.id}`} onClick={onClickRequest}>Request</Button>
           <Dialog open={open} onOpenChange={setOpen}>
             <RequestDialog manager={m} onRequest={() => { setOpen(false); onRequest && onRequest(); }} />
           </Dialog>
@@ -156,156 +173,78 @@ function ManagerCard({ m, onRequest, ensureAuth }) {
   );
 }
 
-function RequestDialog({ manager, onRequest }) {
-  const [days, setDays] = useState(5);
-  const [startDate, setStartDate] = useState(undefined);
-  const [message, setMessage] = useState("");
-  const dailyRate = manager.daily_rate_eur;
-  const fee = useMemo(() => Math.round(dailyRate * days * 0.2), [dailyRate, days]);
-  const [company, setCompany] = useState("");
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+const PRO_BENEFITS = [
+  "Full access to the learning platform & knowledge library",
+  "Early access to new podcast episodes",
+  "Market insights and rate benchmarks before everyone else",
+  "Priority placement in the directory",
+];
 
-  const submit = async () => {
+function ManagerJoinCard({ ensureManagerAuth, user }) {
+  const navigate = useNavigate();
+  const [code, setCode] = useState("");
+  const [joined, setJoined] = useState(false);
+
+  const goProfile = () => { if (ensureManagerAuth()) navigate("/profile"); };
+
+  const joinWaitlist = async () => {
+    if (!ensureManagerAuth()) return;
     try {
       const token = localStorage.getItem("access_token");
-      const payload = {
-        manager_id: manager.id,
-        company_name: company,
-        contact_name: name,
-        email,
-        start_date: startDate ? startDate.toISOString().slice(0,10) : undefined,
-        days: Number(days),
-        daily_rate_eur: dailyRate,
-        message,
-      };
-      const res = await axios.post(`${API}/leads`, payload, { headers: { Authorization: `Bearer ${token}` } });
-      toast.success(`Request sent. Estimated service fee: €${res.data.fee_eur}`);
-      onRequest && onRequest();
+      const res = await axios.post(`${API}/pro/interest`, { discount_code: code || null }, { headers: { Authorization: `Bearer ${token}` } });
+      setJoined(true);
+      if (code && !res.data.code_valid) toast.warning("You're on the list, but the code was invalid or inactive");
+      else toast.success(code ? "You're on the Pro list — your code is saved" : "You're on the Pro list");
     } catch (e) {
-      console.error(e);
-      toast.error(e?.response?.data?.detail || "Could not send request");
+      toast.error(e?.response?.data?.detail || "Could not register interest");
     }
   };
 
   return (
-    <DialogContent className="sm:max-w-lg">
-      <DialogHeader>
-        <DialogTitle>Request {manager.name}</DialogTitle>
-        <DialogDescription>Clients must be logged in and verified (email) to contact a manager. Service fee is 20% per day.</DialogDescription>
-      </DialogHeader>
-      <div className="grid gap-3 py-2">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Company</Label>
-            <Input value={company} onChange={e => setCompany(e.target.value)} placeholder="Your company" />
+    <div className="space-y-5" id="for-managers">
+      <Card className="card-hover border-[rgba(11,107,203,0.25)]" data-testid="manager-join-card">
+        <CardHeader>
+          <Badge className="w-fit bg-emerald-50 text-emerald-700 border border-emerald-200" data-testid="manager-free-badge">Free for managers</Badge>
+          <CardTitle className="mt-2">For Interim Managers</CardTitle>
+          <CardDescription>Create your profile and get discovered by clients — at no cost. You only need an account with verified email.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ul className="space-y-2 text-sm">
+            {["Public profile with full track record", "Direct client requests to your inbox", "No subscription, no listing fee"].map((t, i) => (
+              <li key={i} className="flex items-start gap-2"><CheckCircle2 className="h-4 w-4 mt-0.5 text-emerald-600" />{t}</li>
+            ))}
+          </ul>
+          <div className="mt-5">
+            <Button className="btn-primary w-full" data-testid="create-profile-btn" onClick={goProfile}>
+              {user?.role === "manager" ? "Manage my profile" : "Create your free profile"}
+            </Button>
           </div>
-          <div>
-            <Label>Contact name</Label>
-            <Input value={name} onChange={e => setName(e.target.value)} placeholder="Your name" />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Email</Label>
-            <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" />
-          </div>
-          <div>
-            <Label>Days</Label>
-            <Input type="number" min={1} value={days} onChange={e => setDays(e.target.value)} />
-          </div>
-        </div>
-        <div>
-          <Label>Start date</Label>
-          <div className="rounded-md border p-2">
-            <Calendar mode="single" selected={startDate} onSelect={setStartDate} className="rounded-md" />
-          </div>
-        </div>
-        <div>
-          <Label>Message</Label>
-          <Textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Tell us about your need" />
-        </div>
-        <div className="mt-2 flex items-center justify-between rounded-md border p-3">
-          <div className="text-sm">Estimated service fee (20%):</div>
-          <div className="text-lg font-semibold">€{fee}</div>
-        </div>
-      </div>
-      <DialogFooter>
-        <Button className="btn-primary" onClick={submit}>Send request</Button>
-      </DialogFooter>
-    </DialogContent>
-  );
-}
+        </CardContent>
+      </Card>
 
-function ManagerPricing({ ensureManagerAuth }) {
-  const [code, setCode] = useState("");
-  const [price, setPrice] = useState(299);
-  const [applied, setApplied] = useState(null);
-  const BASE = 299;
-
-  const seed = async () => {
-    try {
-      await axios.post(`${API}/discount-codes/seed`);
-      toast.success("Demo codes loaded: SHARE10, PARTNER50, VIP100");
-    } catch (e) {
-      console.error(e);
-      toast.error("Could not load demo codes");
-    }
-  };
-
-  const apply = async () => {
-    const raw = (code || "").trim();
-    if (!raw) return;
-    const normalized = raw.toUpperCase();
-    try {
-      const res = await axios.get(`${API}/discount-codes/validate`, { params: { code: normalized } });
-      if (res.data.valid) {
-        const p = Number(res.data.final_price_eur);
-        setPrice(isNaN(p) ? BASE : p);
-        setApplied(res.data.applied || {});
-        toast.success(`Code applied. New price €${res.data.final_price_eur}/month`);
-      } else {
-        setPrice(BASE);
-        setApplied(null);
-        toast.error("Invalid or inactive code");
-      }
-    } catch (e) {
-      console.error(e);
-      toast.error("Could not validate code");
-    }
-  };
-
-  return (
-    <Card id="for-managers" className="card-hover">
-      <CardHeader>
-        <CardTitle>For Interim Managers</CardTitle>
-        <CardDescription>Join Interimio for €299/month. Add your profile and get discovered. You need an account and email verification to create your profile.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="flex items-end gap-3">
-          <div className="flex-1">
-            <Label>Discount code</Label>
-            <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Enter code" />
-          </div>
-          <Button className="btn-primary" onClick={apply}>Apply</Button>
-          <Button className="btn-primary" onClick={seed}>Load demo codes</Button>
-        </div>
-        <div className="mt-4 flex items-center justify-between">
-          <div className="text-sm">Your monthly price</div>
-          <div className="text-2xl font-bold">€{price} <span className="text-sm font-normal opacity-70">/ month</span></div>
-        </div>
-        {applied ? (
-          <div className="mt-2 text-sm text-green-700">Applied: {applied.percent_off ? `${applied.percent_off}%` : `€${applied.amount_off_eur}`}</div>
-        ) : null}
-        <div className="mt-5">
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button className="btn-primary" onClick={ensureManagerAuth}>Create your profile</Button>
-            </DialogTrigger>
-          </Dialog>
-        </div>
-      </CardContent>
-    </Card>
+      <Card className="card-hover bg-[#06182b] text-white border-0" data-testid="manager-pro-card">
+        <CardHeader>
+          <div className="flex items-center gap-2 text-[#7cc4ff] text-xs font-semibold uppercase tracking-wider"><Sparkles className="h-4 w-4" /> Coming soon</div>
+          <CardTitle className="mt-1 text-white">Interimio Pro</CardTitle>
+          <CardDescription className="text-white/70">Optional upgrade for managers who want more than a listing.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ul className="space-y-2 text-sm text-white/90">
+            {PRO_BENEFITS.map((t, i) => (
+              <li key={i} className="flex items-start gap-2"><CheckCircle2 className="h-4 w-4 mt-0.5 text-[#7cc4ff]" />{t}</li>
+            ))}
+          </ul>
+          {joined ? (
+            <div className="mt-5 rounded-md bg-white/10 p-3 text-sm" data-testid="pro-waitlist-done">You're on the list. We'll let you know when Pro launches.</div>
+          ) : (
+            <div className="mt-5 grid gap-2">
+              <Input data-testid="pro-code-input" className="bg-white/10 border-white/20 text-white placeholder:text-white/50" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="Shareholder / partner code (optional)" />
+              <Button className="btn-primary w-full" data-testid="pro-waitlist-btn" onClick={joinWaitlist}>Notify me about Pro</Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -785,7 +724,7 @@ function Footer() {
     <footer className="mt-12 border-t">
       <div className="mx-auto max-w-7xl px-6 py-8 flex items-center justify-between">
         <div className="text-sm">© {new Date().getFullYear()} Interimio</div>
-        <div className="text-sm opacity-70">Pricing in EUR. Client fee: 20% per day.</div>
+        <div className="text-sm opacity-70" data-testid="footer-pricing">Free for interim managers · Client service fee: 20% of the engagement</div>
       </div>
     </footer>
   );
@@ -831,27 +770,42 @@ function App() {
     return true;
   };
 
+  const ctx = { user, openLogin: () => setOpenLogin(true), ensureAuth, ensureManagerAuth };
+
+  const home = (
+    <>
+      <Hero ensureLoginOnly={ensureLoginOnly} />
+      <div className="section">
+        <div className="mx-auto max-w-7xl px-6 grid gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2"><Directory ensureAuth={ensureAuth} /></div>
+          <div className="lg:col-span-1"><ManagerJoinCard ensureManagerAuth={ensureManagerAuth} user={user} /></div>
+        </div>
+      </div>
+      <LearningSection user={user} ensureAnyVerified={ensureAnyVerified} ensureLoginOnly={ensureLoginOnly} />
+      <PodcastSection user={user} ensureLoginOnly={ensureLoginOnly} />
+    </>
+  );
+
   return (
     <div className="App">
       <BrowserRouter>
-        <Header user={user} logout={logout} openLogin={() => setOpenLogin(true)} openRegister={() => setOpenRegister(true)} />
-        <Hero ensureLoginOnly={ensureLoginOnly} />
-        <div className="section">
-          <div className="mx-auto max-w-7xl px-6 grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2"><Directory ensureAuth={ensureAuth} /></div>
-            <div className="lg:col-span-1"><ManagerPricing ensureManagerAuth={ensureManagerAuth} /></div>
-          </div>
-        </div>
-        <LearningSection user={user} ensureAnyVerified={ensureAnyVerified} ensureLoginOnly={ensureLoginOnly} />
-        <PodcastSection user={user} ensureLoginOnly={ensureLoginOnly} />
-        <Footer />
+        <AuthContext.Provider value={ctx}>
+          <Header user={user} logout={logout} openLogin={() => setOpenLogin(true)} openRegister={() => setOpenRegister(true)} />
+          <Routes>
+            <Route path="/" element={home} />
+            <Route path="/managers/:id" element={<ManagerDetailPage />} />
+            <Route path="/profile" element={<ManagerProfilePage />} />
+            <Route path="/admin" element={<AdminPage />} />
+          </Routes>
+          <Footer />
 
-        <Dialog open={openLogin} onOpenChange={setOpenLogin}>
-          <LoginDialog onDone={() => setOpenLogin(false)} doLogin={login} />
-        </Dialog>
-        <Dialog open={openRegister} onOpenChange={setOpenRegister}>
-          <RegisterDialog onDone={() => { setOpenRegister(false); setOpenLogin(true); }} />
-        </Dialog>
+          <Dialog open={openLogin} onOpenChange={setOpenLogin}>
+            <LoginDialog onDone={() => setOpenLogin(false)} doLogin={login} />
+          </Dialog>
+          <Dialog open={openRegister} onOpenChange={setOpenRegister}>
+            <RegisterDialog onDone={() => { setOpenRegister(false); setOpenLogin(true); }} />
+          </Dialog>
+        </AuthContext.Provider>
       </BrowserRouter>
       <Toaster richColors position="top-center" />
     </div>

@@ -1,0 +1,140 @@
+<analysis>**original_problem_statement**: 
+The user requested a platform to connect interim managers with clients. 
+PRODUCT REQUIREMENTS:
+- Managers pay a subscription fee (€299/month with discount code options).
+- Clients pay a 20% service fee based on the manager's daily rate multiplied by the duration (days).
+- Brand Name: Interimio. Color: Blue. Currency: EUR.
+- Role-based registration (Manager/Client) with email OTP verification.
+- To prevent bypassing fees, clients must be logged in and verified to contact managers.
+- A Learning platform for interdisciplinary topics (courses, lessons, progress tracking).
+- A Podcast section featuring episodes embedded via Podigee.
+- Learning and Podcast sections must be strictly gated (member-only access).
+
+**User's preferred language**: German. (INSTRUCT NEXT AGENT: You MUST respond to the user in German).
+
+**what currently exists?** 
+A functional full-stack MVP (React/FastAPI/MongoDB) named Interimio. It includes a searchable manager directory, a lead generation flow calculating the 20% fee, and manager profiles. It has JWT authentication with role selection (Manager/Client) and functional Email OTP via SendGrid. Actions like requesting a manager or accessing the Learning/Podcast sections are strictly gated behind login and email verification. The Learning platform supports courses, categories, and progress tracking. The Podcast section supports Podigee iframe embeds and includes an episode editor for managers.
+
+**Last working item**: 
+    - Last item agent was working: Replacing Spotify with Podigee for the podcast section, making the Learning and Podcast sections strictly member-only, and adding topic/level filters to courses.
+    - Status: USER VERIFICATION PENDING
+    - Agent Testing Done: Y
+    - Which testing method agent to use? NA (Testing already done for this specific feature)
+    - User Testing Done: N
+
+**All Pending/In progress Issue list**: 
+  No explicitly broken issues at the moment. Waiting on user feedback regarding the last implemented features.
+
+**In progress Task List**: 
+  None actively in progress, waiting for user response on optional enhancements.
+
+**Upcoming and Future Tasks**:
+  - Task 1: Auto-sync Podigee episodes from RSS feed (Pending user confirmation from the last message). Priority: P1.
+  - Task 2: Rename Podcast section UI to Podiac everywhere (Pending user confirmation). Priority: P2.
+  - Task 3: Admin page for discount codes (create, deactivate, assign to shareholders, view usage). Priority: P1.
+  - Task 4: Manager Detail Pages (richer profiles with deep info and request CTA). Priority: P1.
+  - Task 5: Lead Inbox (simple CRM view with export CSV for admins). Priority: P2.
+  - Task 6: Payments Integration (Stripe Checkout for manager subscription). Priority: P2.
+  - Task 7: Native App footprint (PWA improvements and future wrapper with Capacitor/Expo). Priority: P3.
+
+**Completed work in this session**:
+- Created searchable Manager directory with filters.
+- Built Request flow calculating the 20% service fee based on daily rate and duration.
+- Created Manager subscription flow with discount codes logic.
+- Implemented JWT Auth with role-based Registration (Manager/Client) and Email OTP via SendGrid.
+- Implemented Learning Platform scaffold (courses, lessons, enrollment, progress tracking, category/level filters).
+- Implemented Podcast section using Podigee iframe embeds, with an episode editor.
+- Applied member-only gating to critical paths (Requests, Courses, Podcasts).
+
+**Earlier issues found/mentioned but not fixed**:
+  - None
+
+**Known issue recurrence from previous fork**:
+  - Issue recurrence in previous fork: None
+  - Recurrence count: 0
+  - Status: RESOLVED
+
+**Code Architecture**:
+
+
+**Key Technical Concepts**:
+React, Tailwind CSS, Shadcn UI, FastAPI, MongoDB (Motor), JWT Authentication, SendGrid Email integration, Podigee iFrame Integration.
+
+**key DB schema**:
+  - users: {id (UUID), email, role, is_verified}
+  - managers: {id (UUID), user_id, name, title, location, daily_rate_eur, skills}
+  - leads: {id (UUID), manager_id, client_user_id, days, total_fee_eur}
+  - discount_codes: {code, percent_off, amount_off_eur, is_active}
+  - courses: {id (UUID), title, description, tags, level}
+  - enrollments: {user_id, course_id, completed_lessons, progress_percent}
+  - podcasts: {id (UUID), title, description, podigee_iframe_url}
+
+**changes in tech stack**:
+  - Added SendGrid API for email OTP delivery.
+
+**All files of reference**: 
+  -  (Contains all UI components, contexts, and frontend routing)
+  -  (Contains complete API routing, authentication, and database logic)
+  -  (Added JWT, cryptography, and email dependencies)
+
+**Areas that need refactoring**: 
+  -  and  contain almost the entire application logic. As the app grows, splitting them into separate modular files/directories (e.g., routes, models, views, contexts) will improve maintainability.
+
+**key api endpoints**:
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+
+**Critical Info for New Agent**: 
+  - **Language**: User prefers German. ALWAYS reply in German.
+  - **SMS OTP**: The user explicitly requested to NOT activate SMS OTP right now (no currently not). Twilio credentials are in  but the feature should remain disabled until asked.
+  - **Email OTP**: SendGrid is active and live. Fallback logging to the backend is in place if SendGrid fails.
+  - **IDs**: Use UUIDs exclusively instead of MongoDB ObjectIDs.
+  - **Auth Gating**: Strict rules are enforced. Clients MUST be verified to contact managers. Podcasts and Learning platforms are hidden behind login.
+  - **URLs**: Do not construct URLs manually. Use  and . API endpoints MUST be prefixed with .
+
+**documents and test reports created in this job**:
+  - None
+
+**Last 10 User Messages and any pending HUMAN messages**: 
+ -  - COMPLETED
+ -  - COMPLETED
+ -  - COMPLETED
+ -  - COMPLETED
+ -  - COMPLETED
+ -  - COMPLETED (SMS feature kept disabled as later requested)
+ -  - COMPLETED
+ -  - COMPLETED
+ -  - COMPLETED
+ -  (Feature selection) - COMPLETED
+ 
+ *Pending Message from Agent:* The agent last asked the user if they wanted to rename the Podcast UI to Podiac everywhere, to provide a real Podigee embed URL to test, and if they want an auto-sync RSS feature. The user hasn't replied yet.
+
+**Project Health Check:**
+  - Broken: None
+  - Mocked: Podcast seed data uses dummy Podigee iframe URLs. Needs a real user-provided URL to play.
+
+**3rd Party Integrations**:
+  - SendGrid (Email Delivery) — Requires User API Key (Provided and active)
+  - Twilio (SMS Delivery) — Requires User API Key (Provided but intentionally disabled per user request)
+  - Podigee (Podcast Embeds) — Uses user-provided iframe URLs (No API key needed, just URLs)
+
+**Testing status**:
+  - Testing agent used after significant changes: YES
+  - Troubleshoot agent used after agent stuck in loop: NO
+  - Test files created: []
+  - Known regressions: []
+
+**Credentials to test flow**:
+  - Register a new user via the UI. Check your own email inbox for the SendGrid OTP (or check the backend supervisor logs for the OTP fallback if needed).
+
+**What agent forgot to execute**:
+  - No missed executions, but waiting on the user's response regarding renaming the Podcast UI, providing a real Podigee URL, and deciding on RSS integration.</analysis>

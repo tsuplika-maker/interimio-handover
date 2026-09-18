@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Query, Depends, Request
+from fastapi import FastAPI, APIRouter, HTTPException, Query, Depends, Request, Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -42,6 +42,9 @@ ACCESS_MIN = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY")
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "noreply@example.com")
 EMAIL_DEV_MODE = "true" if not SENDGRID_API_KEY else os.environ.get("EMAIL_DEV_MODE", "false")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
+LEAD_STATUSES = ["new", "contacted", "qualified", "won", "lost"]
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -139,6 +142,37 @@ async def get_current_user(request: Request) -> Dict:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
+async def require_admin(user=Depends(get_current_user)) -> Dict:
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
+async def seed_admin():
+    if not ADMIN_EMAIL or not ADMIN_PASSWORD:
+        logger.warning("ADMIN_EMAIL/ADMIN_PASSWORD not set; admin not seeded")
+        return
+    existing = await db.users.find_one({"email": ADMIN_EMAIL})
+    if not existing:
+        await db.users.insert_one({
+            "id": str(uuid.uuid4()),
+            "email": ADMIN_EMAIL,
+            "phone": None,
+            "password_hash": hash_password(ADMIN_PASSWORD),
+            "role": "admin",
+            "email_verified": True,
+            "phone_verified": False,
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+        })
+        logger.info("Admin user seeded")
+    elif existing.get("role") != "admin" or not verify_password(ADMIN_PASSWORD, existing.get("password_hash", "")):
+        await db.users.update_one({"email": ADMIN_EMAIL}, {"$set": {
+            "role": "admin", "email_verified": True,
+            "password_hash": hash_password(ADMIN_PASSWORD), "updated_at": now_iso(),
+        }})
+
+
 # ---------------------- Models ----------------------
 class StatusCheck(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -160,10 +194,17 @@ class ManagerCreate(BaseModel):
     image_url: Optional[str] = None
     availability_start: Optional[date] = None
     availability_end: Optional[date] = None
+    industries: List[str] = []
+    languages: List[str] = []
+    years_experience: Optional[int] = None
+    linkedin_url: Optional[str] = None
+    highlights: List[str] = []
+    about: Optional[str] = None
 
 
 class Manager(ManagerCreate):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: Optional[str] = None
     created_at: str = Field(default_factory=now_iso)
     updated_at: str = Field(default_factory=now_iso)
 
@@ -183,6 +224,23 @@ class Lead(LeadCreate):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     created_at: str = Field(default_factory=now_iso)
     fee_eur: int
+    status: str = "new"
+    manager_name: Optional[str] = None
+    client_user_id: Optional[str] = None
+
+
+class LeadStatusUpdate(BaseModel):
+    status: str
+
+
+class DiscountCodeUpdate(BaseModel):
+    is_active: Optional[bool] = None
+    assigned_to: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ProInterestInput(BaseModel):
+    discount_code: Optional[str] = None
 
 
 class DiscountCodeCreate(BaseModel):
@@ -315,14 +373,37 @@ async def get_status_checks():
 # ---------------------- Managers ----------------------
 @api_router.post("/managers", response_model=Manager)
 async def create_manager(manager: ManagerCreate, user=Depends(get_current_user)):
-    # Only verified managers can create a profile (email-first)
+    # Only verified managers can create/update their own profile (free)
     if user.get("role") != "manager":
         raise HTTPException(status_code=403, detail="Manager account required")
     if not user.get("email_verified", False):
         raise HTTPException(status_code=403, detail="Email verification required")
-    m = Manager(**manager.model_dump())
+    existing = await db.managers.find_one({"user_id": user["id"]})
+    if existing:
+        update = prepare_for_mongo(manager.model_dump())
+        update["updated_at"] = now_iso()
+        await db.managers.update_one({"id": existing["id"]}, {"$set": update})
+        doc = await db.managers.find_one({"id": existing["id"]})
+        return Manager(**doc)
+    m = Manager(**manager.model_dump(), user_id=user["id"])
     await db.managers.insert_one(prepare_for_mongo(m.model_dump()))
     return m
+
+
+@api_router.get("/managers/me")
+async def my_manager_profile(user=Depends(get_current_user)):
+    if user.get("role") != "manager":
+        raise HTTPException(status_code=403, detail="Manager account required")
+    doc = await db.managers.find_one({"user_id": user["id"]})
+    return Manager(**doc) if doc else None
+
+
+@api_router.get("/managers/{manager_id}", response_model=Manager)
+async def get_manager(manager_id: str):
+    doc = await db.managers.find_one({"id": manager_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Manager not found")
+    return Manager(**doc)
 
 
 @api_router.get("/managers", response_model=List[Manager])
@@ -422,9 +503,17 @@ async def seed_managers():
         },
     ]
 
+    extras = [
+        {"industries": ["Manufacturing", "Automotive"], "languages": ["German", "English"], "years_experience": 18, "highlights": ["Led €120M turnaround for Tier-1 supplier", "Post-merger integration of 3 entities", "Set up FP&A from scratch"], "about": "I step in when finance functions need stability fast — building cash transparency, restoring lender trust, and coaching the team to run on their own."},
+        {"industries": ["SaaS", "FinTech"], "languages": ["German", "English"], "years_experience": 15, "highlights": ["Scaled engineering from 20 to 120", "Cut cloud spend 35%", "ISO 27001 in 9 months"], "about": "Hands-on interim CTO for scale-ups that need architecture clarity, delivery cadence, and security that satisfies enterprise buyers."},
+        {"industries": ["Logistics", "Retail"], "languages": ["German", "English", "Dutch"], "years_experience": 14, "highlights": ["Reduced OTIF misses by 60%", "Rolled out lean across 5 sites"], "about": "Operations leader focused on resilient supply chains and measurable execution."},
+        {"industries": ["Industrial", "B2B Services"], "languages": ["Italian", "English", "German"], "years_experience": 12, "highlights": ["Built 40-person European SDR org", "Doubled pipeline in 2 quarters"], "about": "Sales director who builds repeatable B2B revenue engines across European markets."},
+        {"industries": ["Pharma", "Consulting"], "languages": ["French", "English"], "years_experience": 16, "highlights": ["Org redesign for 2,000 FTE", "New compensation framework post-acquisition"], "about": "HR leader for transformation phases: org design, talent, and culture that sticks."},
+        {"industries": ["E-Commerce", "Media"], "languages": ["German", "English"], "years_experience": 11, "highlights": ["Launched PLG motion to 30% of new ARR", "Reset roadmap and discovery process"], "about": "Product lead bridging strategy and delivery in cross-functional teams."},
+    ]
     created = 0
-    for s in samples:
-        m = Manager(**s)
+    for s, ex in zip(samples, extras):
+        m = Manager(**s, **ex)
         await db.managers.insert_one(prepare_for_mongo(m.model_dump()))
         created += 1
 
@@ -445,14 +534,141 @@ async def create_lead(lead: LeadCreate, user=Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Manager not found")
 
     fee = int(round(lead.daily_rate_eur * lead.days * 0.20))
-    l = Lead(**lead.model_dump(), fee_eur=fee)
+    l = Lead(**lead.model_dump(), fee_eur=fee, manager_name=manager.get("name"), client_user_id=user["id"])
     await db.leads.insert_one(prepare_for_mongo(l.model_dump()))
     return l
 
 
+# ---------------------- Pro interest (managers, free tier) ----------------------
+@api_router.post("/pro/interest")
+async def register_pro_interest(input: ProInterestInput, user=Depends(get_current_user)):
+    if user.get("role") != "manager":
+        raise HTTPException(status_code=403, detail="Manager account required")
+    code = (input.discount_code or "").strip().upper() or None
+    code_valid = False
+    if code:
+        dc = await db.discount_codes.find_one({"code": code, "is_active": True})
+        code_valid = dc is not None
+        if code_valid:
+            await db.discount_redemptions.insert_one({
+                "id": str(uuid.uuid4()), "code": code, "user_id": user["id"],
+                "email": user["email"], "context": "pro_interest", "created_at": now_iso(),
+            })
+    await db.pro_interest.update_one(
+        {"user_id": user["id"]},
+        {"$set": {"email": user["email"], "discount_code": code if code_valid else None, "updated_at": now_iso()},
+         "$setOnInsert": {"id": str(uuid.uuid4()), "user_id": user["id"], "created_at": now_iso()}},
+        upsert=True,
+    )
+    return {"registered": True, "code_valid": code_valid}
+
+
+# ---------------------- Admin ----------------------
+def lead_csv_row(l: Dict) -> str:
+    cols = ["created_at", "status", "manager_name", "company_name", "contact_name", "email", "start_date", "days", "daily_rate_eur", "fee_eur", "message"]
+    out = []
+    for c in cols:
+        v = l.get(c)
+        if c == "status":
+            v = v or "new"
+        v = "" if v is None else str(v).replace('"', '""')
+        out.append(f'"{v}"')
+    return ",".join(out)
+
+
+@api_router.get("/admin/stats")
+async def admin_stats(admin=Depends(require_admin)):
+    leads = await db.leads.find({}, {"fee_eur": 1, "status": 1}).to_list(length=5000)
+    return {
+        "users_total": await db.users.count_documents({}),
+        "clients": await db.users.count_documents({"role": "client"}),
+        "managers_users": await db.users.count_documents({"role": "manager"}),
+        "manager_profiles": await db.managers.count_documents({}),
+        "leads_total": len(leads),
+        "leads_new": sum(1 for l in leads if l.get("status", "new") == "new"),
+        "fees_total_eur": sum(int(l.get("fee_eur", 0)) for l in leads),
+        "pro_interest": await db.pro_interest.count_documents({}),
+        "discount_codes_active": await db.discount_codes.count_documents({"is_active": True}),
+    }
+
+
+@api_router.get("/admin/leads")
+async def admin_list_leads(status: Optional[str] = Query(None), q: Optional[str] = Query(None), admin=Depends(require_admin)):
+    filt: Dict = {}
+    if status and status != "all":
+        filt["status"] = status
+    if q:
+        regex = {"$regex": q, "$options": "i"}
+        filt["$or"] = [{"company_name": regex}, {"contact_name": regex}, {"email": regex}, {"manager_name": regex}]
+    docs = await db.leads.find(filt, {"_id": 0}).sort("created_at", -1).to_list(length=500)
+    for d in docs:
+        d.setdefault("status", "new")
+    return docs
+
+
+@api_router.patch("/admin/leads/{lead_id}")
+async def admin_update_lead(lead_id: str, upd: LeadStatusUpdate, admin=Depends(require_admin)):
+    if upd.status not in LEAD_STATUSES:
+        raise HTTPException(status_code=400, detail=f"status must be one of {LEAD_STATUSES}")
+    res = await db.leads.update_one({"id": lead_id}, {"$set": {"status": upd.status, "updated_at": now_iso()}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    return {"id": lead_id, "status": upd.status}
+
+
+@api_router.get("/admin/leads/export")
+async def admin_export_leads(status: Optional[str] = Query(None), admin=Depends(require_admin)):
+    filt: Dict = {}
+    if status and status != "all":
+        filt["status"] = status
+    docs = await db.leads.find(filt, {"_id": 0}).sort("created_at", -1).to_list(length=5000)
+    header = "created_at,status,manager,company,contact,email,start_date,days,daily_rate_eur,fee_eur,message"
+    body = "\n".join([header] + [lead_csv_row(d) for d in docs])
+    return Response(content=body, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=interimio-leads.csv"})
+
+
+@api_router.get("/admin/discount-codes")
+async def admin_list_discount_codes(admin=Depends(require_admin)):
+    docs = await db.discount_codes.find({}, {"_id": 0}).sort("created_at", -1).to_list(length=500)
+    for d in docs:
+        d["uses"] = await db.discount_redemptions.count_documents({"code": d["code"]})
+    return docs
+
+
+@api_router.patch("/admin/discount-codes/{code_id}")
+async def admin_update_discount_code(code_id: str, upd: DiscountCodeUpdate, admin=Depends(require_admin)):
+    changes = {k: v for k, v in upd.model_dump().items() if v is not None}
+    if not changes:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+    res = await db.discount_codes.update_one({"id": code_id}, {"$set": changes})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Code not found")
+    doc = await db.discount_codes.find_one({"id": code_id}, {"_id": 0})
+    return doc
+
+
+@api_router.delete("/admin/discount-codes/{code_id}")
+async def admin_delete_discount_code(code_id: str, admin=Depends(require_admin)):
+    res = await db.discount_codes.delete_one({"id": code_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Code not found")
+    return {"deleted": True}
+
+
+@api_router.get("/admin/discount-codes/{code_id}/redemptions")
+async def admin_code_redemptions(code_id: str, admin=Depends(require_admin)):
+    dc = await db.discount_codes.find_one({"id": code_id})
+    if not dc:
+        raise HTTPException(status_code=404, detail="Code not found")
+    return await db.discount_redemptions.find({"code": dc["code"]}, {"_id": 0}).sort("created_at", -1).to_list(length=500)
+
+
 # ---------------------- Discount codes ----------------------
 @api_router.post("/discount-codes", response_model=DiscountCode)
-async def create_discount_code(dc: DiscountCodeCreate):
+async def create_discount_code(dc: DiscountCodeCreate, admin=Depends(require_admin)):
+    dc.code = dc.code.strip().upper()
+    if not dc.code:
+        raise HTTPException(status_code=400, detail="Code required")
     existing = await db.discount_codes.find_one({"code": dc.code})
     if existing:
         raise HTTPException(status_code=400, detail="Code already exists")
@@ -495,7 +711,7 @@ async def validate_discount(code: str = Query(...)):
 
 
 @api_router.post("/discount-codes/seed")
-async def seed_discount_codes():
+async def seed_discount_codes(admin=Depends(require_admin)):
     samples = [
         {"code": "SHARE10", "percent_off": 10, "is_active": True, "assigned_to": "Shareholders"},
         {"code": "PARTNER50", "amount_off_eur": 50, "is_active": True, "assigned_to": "Partners"},
@@ -786,6 +1002,7 @@ logger = logging.getLogger(__name__)
 @app.on_event("startup")
 async def on_startup():
     await ensure_indexes()
+    await seed_admin()
 
 
 @app.on_event("shutdown")
