@@ -13,14 +13,9 @@ from jose import jwt, JWTError
 from passlib.context import CryptContext
 import random
 import re
-
-# Optional SendGrid import (email sending)
-try:
-    from sendgrid import SendGridAPIClient
-    from sendgrid.helpers.mail import Mail
-    HAS_SENDGRID = True
-except Exception:  # pragma: no cover
-    HAS_SENDGRID = False
+import smtplib
+import asyncio
+from email.message import EmailMessage
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -40,9 +35,14 @@ BASE_SUBSCRIPTION_EUR = 299
 JWT_SECRET = os.environ.get("JWT_SECRET") or os.environ.get("JWT_SECRET_KEY") or "dev-secret-change-me"
 JWT_ALG = "HS256"
 ACCESS_MIN = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
-SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY")
-SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "noreply@example.com")
-EMAIL_DEV_MODE = "true" if not SENDGRID_API_KEY else os.environ.get("EMAIL_DEV_MODE", "false")
+SMTP_HOST = os.environ.get("SMTP_HOST")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "465"))
+SMTP_USER = os.environ.get("SMTP_USER")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
+SENDER_EMAIL = os.environ.get("SENDER_EMAIL") or SMTP_USER or "noreply@example.com"
+SENDER_NAME = os.environ.get("SENDER_NAME", "Interimio")
+SMTP_CONFIGURED = bool(SMTP_HOST and SMTP_USER and SMTP_PASSWORD)
+EMAIL_DEV_MODE = "true" if not SMTP_CONFIGURED else os.environ.get("EMAIL_DEV_MODE", "false")
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
 LEAD_STATUSES = ["new", "contacted", "qualified", "won", "lost"]
@@ -103,21 +103,38 @@ def create_access_token(sub: str, extra: Dict) -> str:
 
 
 def send_email(to_email: str, subject: str, html: str) -> bool:
-    if not SENDGRID_API_KEY or not HAS_SENDGRID:
+    if not SMTP_CONFIGURED:
         return False
+    msg = EmailMessage()
+    msg["From"] = f"{SENDER_NAME} <{SENDER_EMAIL}>"
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.set_content(re.sub(r"<[^>]+>", "", html))
+    msg.add_alternative(html, subtype="html")
     try:
-        sg = SendGridAPIClient(SENDGRID_API_KEY)
-        resp = sg.send(Mail(from_email=SENDER_EMAIL, to_emails=to_email, subject=subject, html_content=html))
-        logger.info(f"SendGrid sent status={resp.status_code}")
-        return 200 <= getattr(resp, "status_code", 500) < 300
+        if SMTP_PORT == 465:
+            with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=20) as s:
+                s.login(SMTP_USER, SMTP_PASSWORD)
+                s.send_message(msg)
+        else:
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as s:
+                s.starttls()
+                s.login(SMTP_USER, SMTP_PASSWORD)
+                s.send_message(msg)
+        logger.info(f"SMTP mail sent to {to_email}")
+        return True
     except Exception as e:  # pragma: no cover
-        logger.error(f"SendGrid send failed: {e}")
+        logger.error(f"SMTP send failed: {e}")
         return False
 
 
-def send_email_code(to_email: str, code: str) -> bool:
-    """Send OTP code via SendGrid if configured. Returns True if sent."""
-    return send_email(to_email, "Your Interimio verification code", f"""
+async def send_email_async(to_email: str, subject: str, html: str) -> bool:
+    return await asyncio.to_thread(send_email, to_email, subject, html)
+
+
+async def send_email_code(to_email: str, code: str) -> bool:
+    """Send OTP code via SMTP if configured. Returns True if sent."""
+    return await send_email_async(to_email, "Your Interimio verification code", f"""
                 <div style='font-family: Montserrat, Arial; line-height:1.6'>
                   <h2 style='margin:0 0 8px'>Verify your email</h2>
                   <p>Your one-time verification code is:</p>
@@ -623,7 +640,7 @@ async def notify_participants(conv: Dict, sender: Dict, preview: str):
             <p><b>{conv.get('title')}</b></p>
             <p style='background:#f2f6fb;padding:12px;border-radius:8px'>{redact_contacts(preview)[:300]}</p>
             <p><a href='{FRONTEND_URL}/messages?c={conv['id']}' style='background:#0b6bcb;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none'>Open conversation</a></p></div>"""
-        if not send_email(u["email"], f"New message: {conv.get('title')}", html):
+        if not await send_email_async(u["email"], f"New message: {conv.get('title')}", html):
             logger.info(f"[DEV MAIL] message notification to {u['email']} for conv {conv['id']}")
         notified[rid] = now_iso()
     await db.conversations.update_one({"id": conv["id"]}, {"$set": {"notified_at": notified}})
@@ -762,6 +779,20 @@ def lead_csv_row(l: Dict) -> str:
         v = "" if v is None else str(v).replace('"', '""')
         out.append(f'"{v}"')
     return ",".join(out)
+
+
+class TestEmailInput(BaseModel):
+    to: EmailStr
+
+
+@api_router.post("/admin/test-email")
+async def admin_test_email(input: TestEmailInput, admin=Depends(require_admin)):
+    if not SMTP_CONFIGURED:
+        raise HTTPException(status_code=400, detail="SMTP not configured (SMTP_HOST/SMTP_USER/SMTP_PASSWORD)")
+    ok = await send_email_async(input.to, "Interimio test email", "<p>SMTP delivery works. Greetings from Interimio.</p>")
+    if not ok:
+        raise HTTPException(status_code=502, detail="SMTP send failed – check backend logs")
+    return {"sent": True, "to": input.to, "from": SENDER_EMAIL, "host": SMTP_HOST}
 
 
 @api_router.get("/admin/stats")
@@ -945,7 +976,7 @@ async def register(input: RegisterInput):
         "created_at": now_iso(),
     }
     await db.otps.insert_one(otp)
-    sent = send_email_code(input.email, code)
+    sent = await send_email_code(input.email, code)
     if EMAIL_DEV_MODE == "true" or not sent:
         logger.info(f"[DEV OTP] Email code for {input.email}: {code}")
     return {"user_id": user["id"], "next": "verify_email"}
@@ -969,7 +1000,7 @@ async def send_otp(req: OTPRequest):
         "used": False,
         "created_at": now_iso(),
     })
-    sent = send_email_code(user['email'], code)
+    sent = await send_email_code(user['email'], code)
     if EMAIL_DEV_MODE == "true" or not sent:
         logger.info(f"[DEV OTP] Email code for {user['email']}: {code}")
     return {"sent": True}

@@ -7,7 +7,7 @@
 - Login: POST /api/auth/login → Bearer token; admin UI at /admin
 
 ## Test users
-Register via UI (Register → role client/manager). OTP is sent by SendGrid; if delivery fails the code is logged in
+Register via UI (Register → role client/manager). OTP is sent via SMTP (one.com, noreply@interimio.eu); if delivery fails the code is logged in
 `/var/log/supervisor/backend.err.log` as `[DEV OTP] Email code for <email>: 123456`.
 Verify: POST /api/auth/verify-otp {user_id, method:"email", code}
 

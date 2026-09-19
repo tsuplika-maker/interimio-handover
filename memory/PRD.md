@@ -4,13 +4,13 @@
 Plattform, die Interim Manager mit Kunden (Clients) verbindet. Brand: Interimio, Farbe Blau, Währung EUR.
 - Clients zahlen 20 % Servicegebühr (Tagessatz × Tage × 0,2).
 - Manager: **kostenlos** (Änderung Juni 2026, vorher €299/Monat). Später optionale **Pro-Version** (Lern-/Wissensdaten, Podcast-Vorabzugriff, Insights früher). Rabattcodes bleiben für Pro erhalten.
-- Rollenbasierte Registrierung (Manager/Client) mit E-Mail-OTP (SendGrid). SMS-OTP (Twilio) bewusst deaktiviert.
+- Rollenbasierte Registrierung (Manager/Client) mit E-Mail-OTP (SMTP via one.com). SMS-OTP (Twilio) bewusst deaktiviert.
 - Clients müssen eingeloggt + verifiziert sein, um Manager anzufragen.
 - Lernplattform (Kurse, Lektionen, Fortschritt) und Podcast (Podigee-Embeds) nur für Mitglieder. Name bleibt "Podcast" (kein "Podiac").
 - Sprache des Users: Deutsch. UI-Copy aktuell Englisch.
 
 ## Architektur
-- `/app/backend/server.py` – FastAPI, Motor/MongoDB (UUIDs), JWT (python-jose, bcrypt via passlib), SendGrid.
+- `/app/backend/server.py` – FastAPI, Motor/MongoDB (UUIDs), JWT (python-jose, bcrypt via passlib), SMTP (smtplib, one.com).
 - `/app/frontend/src/App.js` – Router, Auth-Hook, Home-Sektionen (Hero, Directory, ManagerJoinCard, Learning, Podcast), Dialoge.
 - `/app/frontend/src/pages/` – `ManagerDetailPage.jsx` (/managers/:id), `ManagerProfilePage.jsx` (/profile), `AdminPage.jsx` (/admin).
 - `/app/frontend/src/components/` – `RequestDialog.jsx`, `admin/AdminLeads.jsx`, `admin/AdminDiscountCodes.jsx`.
@@ -28,7 +28,7 @@ users, otps, managers (user_id, industries, languages, years_experience, linkedi
   - **PWA**: manifest.json, Icons (192/512/180), Apple-Meta-Tags, Titel. **Capacitor-Projekt** `/app/mobile` (iOS + Android generiert, appId com.interimio.app, Icon/Splash-Quellen, README mit Store-Anleitung). Push-Notifications noch nicht.
   - Fix: Podcast `podigee_iframe_url` optional (500 bei Alt-Daten).
   - Tests: `/app/backend/tests/test_messaging.py` (16) + Regression (16) grün; Report `/app/test_reports/iteration_2.json`.
-  - ⚠️ **SendGrid: „Maximum credits exceeded“ (401)** – Konto-Kontingent aufgebraucht → aktuell gehen KEINE OTP-/Benachrichtigungs-Mails raus (Fallback: Code im Backend-Log). User muss SendGrid-Plan aufstocken.
+  - **E-Mail-Versand auf SMTP (one.com) umgestellt**, SendGrid entfernt (Trial abgelaufen). Env: SMTP_HOST=send.one.com, SMTP_PORT=465, SMTP_USER/SENDER_EMAIL=noreply@interimio.eu, SMTP_PASSWORD, SENDER_NAME. Testmail an info@mili.gmbh erfolgreich. Admin-Endpoint `POST /api/admin/test-email {to}`.
 - 2026-06 (Admin/Detail/Free):
   - Manager-Preise entfernt → kostenlos; "Interimio Pro – Coming soon"-Karte mit Benefits + Warteliste (`POST /api/pro/interest`, optionaler Rabattcode → Redemption).
   - Admin-Rolle + Seeding, `require_admin`. Admin-Seite `/admin`: Stats, Lead-Inbox (Filter, Suche, Status new/contacted/qualified/won/lost, CSV-Export), Rabattcodes (anlegen, aktiv/inaktiv, löschen, Nutzungen).
@@ -38,7 +38,6 @@ users, otps, managers (user_id, industries, languages, years_experience, linkedi
   - Tests: `/app/backend/tests/test_interimio.py`, Report `/app/test_reports/iteration_1.json` (Backend 16/16, Frontend ok).
 
 ## Backlog
-- P0: SendGrid-Kontingent aufstocken (sonst keine OTP-Mails).
 - P1: PWA/Mobile-Optimierung (Bottom-Navigation, schnelle Suche, Touch-Layout) – vom User als nächster Schritt nach Messaging gewünscht.
 - P1: Push-Notifications in der App (@capacitor/push-notifications + FCM/APNs).
 - P1: Pro-Version (Preis festlegen, Stripe Checkout, Pro-Gating für Learning/Podcast-Vorab, Pro-Badge).
