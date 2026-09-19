@@ -46,3 +46,8 @@ users, otps, managers (user_id, industries, languages, years_experience, linkedi
 - P2: Podigee RSS-Auto-Import; echte Podigee-URL (User hat noch keine).
 - P2: UI-Copy auf Deutsch / i18n; Profilbild-Upload (Object Storage) statt URL.
 - P3: PWA/Native Wrapper. Refactoring App.js/server.py in Module.
+
+## ⚠️ Projektentscheidung (Juni 2026): Zusammenführung mit interim-connect-3
+- Es existiert ein zweites, weiter entwickeltes Emergent-Projekt **interim-connect-3** (deutsche UI + DE/EN, Logo/Favicon, Impressum/Datenschutz/AGB – MiLi Beteiligungs-Holding GmbH, München –, KI-Matching, Mandate, Referral, Chatbot, Voice-Agent, Manager-Dashboard, großer Admin). Dessen Frontend-Quellcode wurde via Source-Map gesichert: `/app/memory/interim-connect-3-src/` (inkl. `public/` mit Logo & Favicons).
+- **User-Entscheidung: interim-connect-3 wird Hauptprojekt.** Dieses Projekt ist Referenz/Spender. Übergabe-Paket: `/app/handover/MIGRATION.md` + `/app/handover/backend|frontend`. Transfer via „Save to GitHub“ → Agent in interim-connect-3 übernimmt.
+- Gültiges Preismodell: Manager kostenlos, später Pro (die €1999/€199-Preise des anderen Projekts sind obsolet). Podcast heißt „Podcast“. Live interimio.eu bleibt vorerst auf diesem Stand.
