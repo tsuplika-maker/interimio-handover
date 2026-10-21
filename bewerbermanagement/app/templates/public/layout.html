@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block head %}<style>:root { --brand: {{ company.primary_color }}; }</style>{% block pubhead %}{% endblock %}{% endblock %}
+{% block body %}
+<header class="pub-header">
+  <div class="container">
+    <p class="small" style="opacity:.85;margin:0 0 6px"><a href="/karriere/{{ company.slug }}">{{ company.name }} · Karriere</a></p>
+    {% block header %}{% endblock %}
+  </div>
+</header>
+<main class="pub-main"><div class="container">{% block content %}{% endblock %}</div></main>
+<div class="footer">Bewerbermanagement mit {{ APP_NAME }}</div>
+{% endblock %}

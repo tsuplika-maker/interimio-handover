@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ APP_NAME }} – Bewerbermanagement für den Mittelstand{% endblock %}
+{% block body %}
+<section class="hero">
+  <div class="container">
+    <div class="nav">
+      <span class="logo">{{ APP_NAME }}</span>
+      <span><a href="#funktionen">Funktionen</a><a href="#preise">Preise</a><a href="/login">Anmelden</a></span>
+    </div>
+    <h1 style="margin-top:50px">Bewerbermanagement, das Ihr Team wirklich nutzt.</h1>
+    <p>Stellen veröffentlichen, Bewerbungen zentral sammeln, gemeinsam bewerten und schneller einstellen – DSGVO-konform und ohne IT-Projekt.</p>
+    <p class="actions" style="margin-top:28px">
+      <a class="btn lg" href="/registrieren">14 Tage kostenlos testen</a>
+      <a class="btn lg secondary" href="#funktionen">Mehr erfahren</a>
+    </p>
+  </div>
+</section>
+<section class="section" id="funktionen">
+  <div class="container">
+    <h2 style="text-align:center;font-size:1.8rem">Alles, was Recruiting braucht</h2>
+    <div class="grid grid-3" style="margin-top:30px">
+      <div class="card feature"><h3>Eigene Karriereseite</h3><p class="muted">In Ihren Farben, mit Bewerbungsformular und Lebenslauf-Upload. Per Widget auf Ihrer Website einbettbar.</p></div>
+      <div class="card feature"><h3>Kanban-Pipeline</h3><p class="muted">Bewerber:innen per Drag &amp; Drop durch Ihre Phasen bewegen – vom Eingang bis zur Einstellung.</p></div>
+      <div class="card feature"><h3>Teamarbeit</h3><p class="muted">Notizen, Sternebewertung und Rollen für HR und Fachabteilung. Alle sehen denselben Stand.</p></div>
+      <div class="card feature"><h3>E-Mail-Vorlagen</h3><p class="muted">Eingangsbestätigung automatisch, Einladung und Absage mit einem Klick – personalisiert.</p></div>
+      <div class="card feature"><h3>Google for Jobs</h3><p class="muted">Stellen werden mit strukturierten Daten ausgeliefert und so von Google gefunden.</p></div>
+      <div class="card feature"><h3>DSGVO an Bord</h3><p class="muted">Einwilligung, automatische Löschfristen, Datenexport und Löschung pro Person.</p></div>
+      <div class="card feature"><h3>Recruiting-Kennzahlen</h3><p class="muted">Funnel, Quellen und Time-to-Hire auf einen Blick.</p></div>
+      <div class="card feature"><h3>Hosting nach Wahl</h3><p class="muted">Betrieb auf Ihrem Server oder in einem deutschen Rechenzentrum – per Docker in Minuten.</p></div>
+      <div class="card feature"><h3>Sofort startklar</h3><p class="muted">Keine Schulung nötig. Registrieren, erste Stelle anlegen, veröffentlichen.</p></div>
+    </div>
+  </div>
+</section>
+<section class="section" id="preise" style="background:#fff">
+  <div class="container">
+    <h2 style="text-align:center;font-size:1.8rem">Faire Preise, monatlich kündbar</h2>
+    <div class="grid grid-3" style="margin-top:30px">
+      {% for key in ['starter', 'business', 'enterprise'] %}{% set p = PLANS[key] %}
+      <div class="card price {{ 'highlight' if key == 'business' }}">
+        <h3>{{ p.name }}</h3>
+        <div class="amount">{{ p.price }} €<span class="muted small"> / Monat</span></div>
+        <ul>
+          <li>{{ 'Unbegrenzt' if p.jobs > 1000 else p.jobs }} aktive Stellen</li>
+          <li>{{ 'Unbegrenzt' if p.users > 1000 else p.users }} Nutzer:innen</li>
+          <li>Karriereseite &amp; Widget</li>
+          <li>E-Mail-Vorlagen &amp; DSGVO-Tools</li>
+          {% if key == 'enterprise' %}<li>Persönlicher Ansprechpartner, AVV, SSO auf Anfrage</li>{% endif %}
+        </ul>
+        <a class="btn {{ '' if key == 'business' else 'secondary' }}" href="/registrieren">Kostenlos testen</a>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="muted small" style="text-align:center">Alle Preise zzgl. MwSt.</p>
+  </div>
+</section>
+<div class="footer">© {{ APP_NAME }}</div>
+{% endblock %}

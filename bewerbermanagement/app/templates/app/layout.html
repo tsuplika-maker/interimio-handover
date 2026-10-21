@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block head %}<style>:root { --brand: {{ org.primary_color }}; }</style>{% endblock %}
+{% block body %}
+{% set path = request.url.path %}
+<div class="shell">
+  <nav class="sidebar">
+    <div class="logo">{{ APP_NAME[:4] }}<span>{{ APP_NAME[4:] }}</span></div>
+    <a href="/app" class="{{ 'active' if path == '/app' }}">Übersicht</a>
+    <a href="/app/stellen" class="{{ 'active' if path.startswith('/app/stellen') }}">Stellen</a>
+    <a href="/app/bewerber" class="{{ 'active' if path.startswith('/app/bewerber') }}">Bewerber:innen</a>
+    <a href="/app/team" class="{{ 'active' if path.startswith('/app/team') }}">Team</a>
+    {% if user.role == 'admin' %}<a href="/app/einstellungen" class="{{ 'active' if path.startswith('/app/einstellungen') }}">Einstellungen</a>{% endif %}
+    <a href="/app/abo" class="{{ 'active' if path.startswith('/app/abo') }}">Abo</a>
+    <a href="/karriere/{{ org.slug }}" target="_blank">Karriereseite ↗</a>
+    {% if is_superadmin %}<a href="/superadmin" class="{{ 'active' if path.startswith('/superadmin') }}">Superadmin</a>{% endif %}
+    <div class="spacer"></div>
+    <div class="who">
+      <strong style="color:#fff">{{ user.name }}</strong><br>{{ org.name }}<br>
+      <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Abmelden</button></form>
+    </div>
+  </nav>
+  <main class="main">
+    {% include "_flash.html" %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% block scripts %}{% endblock %}
+{% endblock %}

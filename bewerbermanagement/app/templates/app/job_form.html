@@ -1,0 +1,24 @@
+{% extends "app/layout.html" %}
+{% block title %}{{ 'Stelle bearbeiten' if job else 'Neue Stelle' }} – {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>{{ 'Stelle bearbeiten' if job else 'Neue Stelle' }}</h1>
+<form class="card" method="post" action="{{ '/app/stellen/%d/bearbeiten' % job.id if job else '/app/stellen/neu' }}">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label for="title">Stellentitel *</label><input id="title" type="text" name="title" value="{{ job.title if job }}" required placeholder="z. B. Vertriebsmitarbeiter (m/w/d)">
+  <div class="grid grid-3">
+    <div><label for="department">Abteilung</label><input id="department" type="text" name="department" value="{{ job.department if job }}"></div>
+    <div><label for="location">Standort</label><input id="location" type="text" name="location" value="{{ job.location if job }}" placeholder="z. B. München"></div>
+    <div><label for="salary_range">Gehaltsspanne</label><input id="salary_range" type="text" name="salary_range" value="{{ job.salary_range if job }}" placeholder="z. B. 50.000–60.000 €"></div>
+  </div>
+  <div class="grid grid-2">
+    <div><label for="employment_type">Anstellungsart</label><select id="employment_type" name="employment_type">
+      {% for t in EMPLOYMENT_TYPES %}<option {{ 'selected' if job and job.employment_type == t }}>{{ t }}</option>{% endfor %}</select></div>
+    <div><label for="remote">Arbeitsort</label><select id="remote" name="remote">
+      {% for t in REMOTE_OPTIONS %}<option {{ 'selected' if job and job.remote == t }}>{{ t }}</option>{% endfor %}</select></div>
+  </div>
+  <label for="description">Aufgaben</label><textarea id="description" name="description" rows="6">{{ job.description if job }}</textarea>
+  <label for="requirements">Profil / Anforderungen</label><textarea id="requirements" name="requirements" rows="6">{{ job.requirements if job }}</textarea>
+  <label for="benefits">Benefits</label><textarea id="benefits" name="benefits" rows="5">{{ job.benefits if job }}</textarea>
+  <p class="actions"><button class="btn">Speichern</button><a class="btn secondary" href="{{ '/app/stellen/%d' % job.id if job else '/app/stellen' }}">Abbrechen</a></p>
+</form>
+{% endblock %}

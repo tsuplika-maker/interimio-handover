@@ -1,0 +1,41 @@
+{% extends "app/layout.html" %}
+{% block title %}Übersicht – {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div><h1>Hallo {{ user.name.split(' ')[0] }} 👋</h1><p class="muted">Ihr Recruiting bei {{ org.name }} auf einen Blick.</p></div>
+  {% if user.role != 'viewer' %}<a class="btn" href="/app/stellen/neu">+ Neue Stelle</a>{% endif %}
+</div>
+{% if trial_days_left is not none %}
+<div class="notice">Testphase: noch <strong>{{ trial_days_left }} Tag{{ 'e' if trial_days_left != 1 }}</strong>. <a href="/app/abo">Tarif wählen →</a></div>
+{% endif %}
+<div class="grid grid-4">
+  <div class="card stat"><div class="num">{{ stats.open_jobs }}</div><div class="label">Veröffentlichte Stellen</div></div>
+  <div class="card stat"><div class="num">{{ stats.active }}</div><div class="label">Aktive Bewerbungen</div></div>
+  <div class="card stat"><div class="num">{{ stats.new_7d }}</div><div class="label">Neu (7 Tage)</div></div>
+  <div class="card stat"><div class="num">{{ stats.time_to_hire if stats.time_to_hire is not none else '–' }}</div><div class="label">Ø Tage bis Einstellung ({{ stats.hired }} eingestellt)</div></div>
+</div>
+<div class="grid grid-2">
+  <div class="card">
+    <h2>Funnel</h2>
+    {% for f in funnel %}
+    <div class="bar"><span>{{ f.name }}</span><div class="track"><div class="fill" style="width: {{ (f.n / max_n * 100)|round }}%"></div></div><strong>{{ f.n }}</strong></div>
+    {% endfor %}
+    <h2 style="margin-top:22px">Quellen</h2>
+    {% for s in sources %}<div class="bar"><span>{{ s.source }}</span><div class="track"><div class="fill" style="width: {{ (s.n / sources[0].n * 100)|round }}%"></div></div><strong>{{ s.n }}</strong></div>
+    {% else %}<p class="muted">Noch keine Daten.</p>{% endfor %}
+  </div>
+  <div class="card">
+    <h2>Neueste Bewerbungen</h2>
+    {% if recent %}
+    <table>
+      {% for a in recent %}
+      <tr><td><a href="/app/bewerber/{{ a.id }}">{{ a.first_name }} {{ a.last_name }}</a><div class="muted small">{{ a.job_title }}</div></td>
+          <td><span class="badge">{{ a.stage_name }}</span></td><td class="muted small">{{ a.created_at|datum }}</td></tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <p class="muted">Noch keine Bewerbungen. Legen Sie eine Stelle an, veröffentlichen Sie sie und teilen Sie Ihre <a href="/karriere/{{ org.slug }}" target="_blank">Karriereseite</a>.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

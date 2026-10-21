@@ -1,0 +1,9 @@
+{% extends "public/layout.html" %}
+{% block title %}Vielen Dank – {{ company.name }}{% endblock %}
+{% block header %}<h1>Vielen Dank für Ihre Bewerbung!</h1>{% endblock %}
+{% block content %}
+<div class="card">
+  <p>Wir haben Ihre Unterlagen erhalten und Ihnen eine Bestätigung per E-Mail geschickt. Wir melden uns so schnell wie möglich.</p>
+  <a class="btn secondary" href="/karriere/{{ company.slug }}">Weitere Stellen ansehen</a>
+</div>
+{% endblock %}

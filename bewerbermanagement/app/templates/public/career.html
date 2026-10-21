@@ -1,0 +1,21 @@
+{% extends "public/layout.html" %}
+{% block title %}Karriere bei {{ company.name }}{% endblock %}
+{% block header %}<h1>Karriere bei {{ company.name }}</h1>{% if company.about %}<p class="pre" style="max-width:720px;opacity:.9">{{ company.about }}</p>{% endif %}{% endblock %}
+{% block content %}
+<h2>{{ jobs|length }} offene Stelle{{ 'n' if jobs|length != 1 }}</h2>
+{% for j in jobs %}
+<div class="card job-row">
+  <div>
+    <h3 style="margin:0"><a href="/karriere/{{ company.slug }}/stellen/{{ j.id }}">{{ j.title }}</a></h3>
+    <div class="tags">
+      {% if j.location %}<span class="tag">📍 {{ j.location }}</span>{% endif %}
+      <span class="tag">{{ j.employment_type }}</span><span class="tag">{{ j.remote }}</span>
+      {% if j.department %}<span class="tag">{{ j.department }}</span>{% endif %}
+    </div>
+  </div>
+  <a class="btn" href="/karriere/{{ company.slug }}/stellen/{{ j.id }}">Ansehen</a>
+</div>
+{% else %}
+<div class="card"><p class="muted">Derzeit sind keine Stellen ausgeschrieben. Schauen Sie bald wieder vorbei!</p></div>
+{% endfor %}
+{% endblock %}

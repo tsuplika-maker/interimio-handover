@@ -1,0 +1,67 @@
+{% extends "app/layout.html" %}
+{% block title %}Einstellungen – {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>Einstellungen</h1>
+<form class="card" method="post" action="/app/einstellungen">
+  <h2>Unternehmen &amp; Karriereseite</h2>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="grid grid-2">
+    <div><label for="name">Firmenname</label><input id="name" type="text" name="name" value="{{ org.name }}" required></div>
+    <div><label for="website">Website</label><input id="website" type="url" name="website" value="{{ org.website }}" placeholder="https://"></div>
+  </div>
+  <label for="about">Über uns (auf der Karriereseite)</label><textarea id="about" name="about">{{ org.about }}</textarea>
+  <div class="grid grid-2">
+    <div><label for="primary_color">Markenfarbe</label><input id="primary_color" type="color" name="primary_color" value="{{ org.primary_color }}"></div>
+    <div><label for="retention_days">DSGVO-Löschfrist nach Abschluss (Tage)</label><input id="retention_days" type="number" name="retention_days" min="30" max="3650" value="{{ org.retention_days }}"></div>
+  </div>
+  <p><button class="btn">Speichern</button></p>
+</form>
+<div class="card">
+  <h2>Einbindung auf Ihrer Website</h2>
+  <p>Karriereseite: <a href="{{ base }}/karriere/{{ org.slug }}" target="_blank">{{ base }}/karriere/{{ org.slug }}</a></p>
+  <label>Widget (HTML-Snippet in Ihre Website kopieren)</label>
+  <input type="text" readonly value='<script src="{{ base }}/karriere/{{ org.slug }}/widget.js"></script>' onclick="this.select()">
+  <label>JSON-Feed für Entwickler / Jobbörsen</label>
+  <input type="text" readonly value="{{ base }}/api/public/{{ org.slug }}/jobs" onclick="this.select()">
+</div>
+<div class="card" id="phasen">
+  <h2>Pipeline-Phasen</h2>
+  <table>
+    {% for s in stages %}
+    <tr><td>
+      <form class="actions" method="post" action="/app/einstellungen/phasen/{{ s.id }}">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="text" name="name" value="{{ s.name }}" style="max-width:240px">
+        <button class="btn secondary sm" name="action" value="rename">Umbenennen</button>
+        {% if s.kind == 'open' and not s.n %}<button class="btn danger sm" name="action" value="delete">Löschen</button>{% endif %}
+        <span class="muted small">{{ s.n }} Bewerbung(en){% if s.kind != 'open' %} · Abschluss-Phase{% endif %}</span>
+      </form>
+    </td></tr>
+    {% endfor %}
+  </table>
+  <form class="actions" method="post" action="/app/einstellungen/phasen" style="margin-top:12px">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="text" name="name" placeholder="z. B. Probearbeiten" style="max-width:240px" required>
+    <button class="btn sm">Phase hinzufügen</button>
+  </form>
+</div>
+<div class="card" id="vorlagen">
+  <h2>E-Mail-Vorlagen</h2>
+  <p class="muted small">Platzhalter: <code>{{ '{{vorname}}' }}</code>, <code>{{ '{{nachname}}' }}</code>, <code>{{ '{{stelle}}' }}</code>, <code>{{ '{{firma}}' }}</code>. Die Eingangsbestätigung wird automatisch versendet.</p>
+  {% for t in tpls %}
+  <form method="post" action="/app/einstellungen/vorlagen/{{ t.id }}" style="border-top:1px solid var(--border);padding-top:8px;margin-top:14px">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <h3>{{ t.name }}</h3>
+    <label>Betreff</label><input type="text" name="subject" value="{{ t.subject }}" required>
+    <label>Text</label><textarea name="body" rows="7" required>{{ t.body }}</textarea>
+    <p><button class="btn secondary sm">Vorlage speichern</button></p>
+  </form>
+  {% endfor %}
+</div>
+<form class="card" method="post" action="/app/einstellungen/bereinigen">
+  <h2>DSGVO-Bereinigung</h2>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <p class="muted">Abgeschlossene Bewerbungen werden nach {{ org.retention_days }} Tagen automatisch beim Serverstart gelöscht. Sie können die Bereinigung auch sofort auslösen.</p>
+  <button class="btn secondary">Jetzt bereinigen</button>
+</form>
+{% endblock %}

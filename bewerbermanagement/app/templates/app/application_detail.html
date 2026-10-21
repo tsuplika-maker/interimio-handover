@@ -1,0 +1,94 @@
+{% extends "app/layout.html" %}
+{% block title %}{{ a.first_name }} {{ a.last_name }} – {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <p class="small" style="margin:0"><a href="/app/stellen/{{ a.job_id }}">← {{ a.job_title }}</a></p>
+    <h1>{{ a.first_name }} {{ a.last_name }} <span class="badge {{ a.stage_kind }}">{{ a.stage_name }}</span></h1>
+    <p class="muted">Eingegangen am {{ a.created_at|datum(true) }} · Quelle: {{ a.source }}</p>
+  </div>
+  {% if user.role != 'viewer' %}
+  <form class="actions" method="post" action="/app/bewerber/{{ a.id }}/phase">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <select name="stage_id" style="width:auto">{% for s in stages %}<option value="{{ s.id }}" {{ 'selected' if s.id == a.stage_id }}>{{ s.name }}</option>{% endfor %}</select>
+    <label class="check" style="margin:0"><input type="checkbox" name="send_mail" value="1"> <span class="small">Absage/Angebot mailen</span></label>
+    <button class="btn">Phase ändern</button>
+  </form>
+  {% endif %}
+</div>
+{% if others %}<div class="notice">Diese Person hat sich auch beworben auf: {% for o in others %}<a href="/app/bewerber/{{ o.id }}">{{ o.title }}</a>{{ ', ' if not loop.last }}{% endfor %}</div>{% endif %}
+<div class="grid detail">
+  <div>
+    <div class="card">
+      <h2>Kontakt</h2>
+      <table>
+        <tr><th>E-Mail</th><td><a href="mailto:{{ a.email }}">{{ a.email }}</a></td></tr>
+        {% if a.phone %}<tr><th>Telefon</th><td><a href="tel:{{ a.phone }}">{{ a.phone }}</a></td></tr>{% endif %}
+        {% if a.linkedin %}<tr><th>Profil</th><td>{% if a.linkedin.startswith('http') %}<a href="{{ a.linkedin }}" target="_blank" rel="noopener noreferrer">{{ a.linkedin }}</a>{% else %}{{ a.linkedin }}{% endif %}</td></tr>{% endif %}
+        {% if a.salary_expectation %}<tr><th>Gehaltswunsch</th><td>{{ a.salary_expectation }}</td></tr>{% endif %}
+        {% if a.start_date %}<tr><th>Eintritt ab</th><td>{{ a.start_date }}</td></tr>{% endif %}
+      </table>
+    </div>
+    {% if a.cover_letter %}<div class="card"><h2>Anschreiben</h2><div class="pre">{{ a.cover_letter }}</div></div>{% endif %}
+    <div class="card">
+      <h2>Dokumente</h2>
+      {% for d in docs %}<p>📄 <a href="/app/dokumente/{{ d.id }}" target="_blank">{{ d.filename }}</a> <span class="muted small">({{ (d.size / 1024)|round|int }} KB)</span></p>
+      {% else %}<p class="muted">Keine Dokumente.</p>{% endfor %}
+    </div>
+    <div class="card" id="notizen">
+      <h2>Notizen &amp; Feedback</h2>
+      <form method="post" action="/app/bewerber/{{ a.id }}/notiz">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <textarea name="body" placeholder="Eindruck aus dem Gespräch, Rückfragen, Einschätzung …" required></textarea>
+        <p><button class="btn sm">Notiz speichern</button></p>
+      </form>
+      <ul class="timeline">
+        {% for n in notes %}<li><strong>{{ n.author or 'Gelöschter Nutzer' }}</strong> <span class="muted small">{{ n.created_at|datum(true) }}</span><div class="pre">{{ n.body }}</div></li>{% endfor %}
+      </ul>
+    </div>
+    {% if user.role != 'viewer' %}
+    <div class="card">
+      <h2>E-Mail senden</h2>
+      <form method="post" action="/app/bewerber/{{ a.id }}/email">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label for="tpl-select">Vorlage</label>
+        <select id="tpl-select"><option value="">– Vorlage wählen –</option>{% for t in tpls %}<option value="{{ t.key }}">{{ t.name }}</option>{% endfor %}</select>
+        <label for="mail-subject">Betreff</label><input id="mail-subject" type="text" name="subject" required>
+        <label for="mail-body">Nachricht</label><textarea id="mail-body" name="body" rows="8" required></textarea>
+        <p><button class="btn">An {{ a.email }} senden</button></p>
+      </form>
+      <script type="application/json" id="tpl-data">{{ tpls|tojson }}</script>
+      {% if emails %}<h3>Gesendet</h3><ul class="timeline">{% for e in emails %}<li>{{ e.subject }} <span class="muted small">· {{ e.created_at|datum(true) }} · {{ e.status }}</span></li>{% endfor %}</ul>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+  <div>
+    <div class="card">
+      <h2>Bewertung</h2>
+      <form class="star-form" method="post" action="/app/bewerber/{{ a.id }}/bewertung">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        {% for i in range(1, 6) %}<button name="rating" value="{{ i }}" class="{{ 'on' if i <= a.rating }}" title="{{ i }} Sterne">★</button>{% endfor %}
+      </form>
+    </div>
+    <div class="card">
+      <h2>Verlauf</h2>
+      <ul class="timeline">
+        {% for ac in activities %}<li>{{ ac.message }}<div class="muted small">{{ ac.author or 'System' }} · {{ ac.created_at|datum(true) }}</div></li>{% endfor %}
+      </ul>
+    </div>
+    {% if user.role != 'viewer' %}
+    <div class="card">
+      <h2>Datenschutz</h2>
+      <p class="muted small">Einwilligung erteilt am {{ a.consent_at|datum(true) }}.{% if a.closed_at %} Automatische Löschung {{ org.retention_days }} Tage nach Abschluss ({{ a.closed_at|datum }}).{% endif %}</p>
+      <div class="actions">
+        <a class="btn secondary sm" href="/app/bewerber/{{ a.id }}/export">Daten exportieren</a>
+        <form class="inline" method="post" action="/app/bewerber/{{ a.id }}/loeschen" onsubmit="return confirm('Bewerbung inkl. aller Dokumente endgültig löschen?')">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn danger sm">Endgültig löschen</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/pipeline.js"></script>{% endblock %}

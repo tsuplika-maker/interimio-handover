@@ -1,0 +1,22 @@
+{% extends "app/layout.html" %}
+{% block title %}Abo – {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>Abo &amp; Tarif</h1>
+{% if expired %}<div class="flash error">Ihre Testphase ist abgelaufen. Ihre Daten bleiben erhalten – wählen Sie einen Tarif, um weiterzuarbeiten.</div>
+{% elif trial_days_left is not none %}<div class="notice">Testphase: noch {{ trial_days_left }} Tag(e).</div>{% endif %}
+<div class="card">
+  <p>Aktueller Tarif: <strong>{{ PLANS[org.plan].name }}</strong></p>
+  <p>Aktive Stellen: {{ usage.jobs }} / {{ 'unbegrenzt' if PLANS[org.plan].jobs > 1000 else PLANS[org.plan].jobs }} · Nutzer:innen: {{ usage.users }} / {{ 'unbegrenzt' if PLANS[org.plan].users > 1000 else PLANS[org.plan].users }}</p>
+</div>
+<div class="grid grid-3">
+  {% for key in ['starter', 'business', 'enterprise'] %}{% set p = PLANS[key] %}
+  <div class="card price {{ 'highlight' if key == org.plan }}">
+    <h3>{{ p.name }}</h3>
+    <div class="amount">{{ p.price }} €<span class="muted small"> / Monat</span></div>
+    <p>{{ 'Unbegrenzt' if p.jobs > 1000 else p.jobs }} Stellen · {{ 'unbegrenzt' if p.users > 1000 else p.users }} Nutzer:innen</p>
+    {% if key == org.plan %}<span class="badge published">Aktiv</span>
+    {% else %}<a class="btn secondary" href="mailto:{{ sales_email }}?subject={{ ('Upgrade auf ' ~ p.name ~ ' – ' ~ org.name)|urlencode }}">Tarif anfragen</a>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

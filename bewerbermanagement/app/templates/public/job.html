@@ -1,0 +1,43 @@
+{% extends "public/layout.html" %}
+{% block title %}{{ job.title }} – {{ company.name }}{% endblock %}
+{% block pubhead %}<script type="application/ld+json">{{ jsonld|safe }}</script>{% endblock %}
+{% block header %}
+<h1>{{ job.title }}</h1>
+<div class="tags">
+  {% if job.location %}<span class="tag">📍 {{ job.location }}</span>{% endif %}
+  <span class="tag">{{ job.employment_type }}</span><span class="tag">{{ job.remote }}</span>
+  {% if job.salary_range %}<span class="tag">💶 {{ job.salary_range }}</span>{% endif %}
+</div>
+{% endblock %}
+{% block content %}
+<div class="grid detail">
+  <div>
+    {% if job.description %}<div class="card"><h2>Ihre Aufgaben</h2><div class="pre">{{ job.description }}</div></div>{% endif %}
+    {% if job.requirements %}<div class="card"><h2>Ihr Profil</h2><div class="pre">{{ job.requirements }}</div></div>{% endif %}
+    {% if job.benefits %}<div class="card"><h2>Was wir bieten</h2><div class="pre">{{ job.benefits }}</div></div>{% endif %}
+  </div>
+  <div>
+    <div class="card" id="bewerben">
+      <h2>Jetzt bewerben</h2>
+      {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+      <form method="post" action="/karriere/{{ company.slug }}/stellen/{{ job.id }}/bewerben#bewerben" enctype="multipart/form-data">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+        <label for="first_name">Vorname *</label><input id="first_name" type="text" name="first_name" value="{{ form.first_name }}" required>
+        <label for="last_name">Nachname *</label><input id="last_name" type="text" name="last_name" value="{{ form.last_name }}" required>
+        <label for="email">E-Mail *</label><input id="email" type="email" name="email" value="{{ form.email }}" required>
+        <label for="phone">Telefon</label><input id="phone" type="text" name="phone" value="{{ form.phone }}">
+        <label for="linkedin">LinkedIn / XING</label><input id="linkedin" type="url" name="linkedin" value="{{ form.linkedin }}" placeholder="https://">
+        <label for="salary_expectation">Gehaltsvorstellung</label><input id="salary_expectation" type="text" name="salary_expectation" value="{{ form.salary_expectation }}">
+        <label for="start_date">Frühester Eintritt</label><input id="start_date" type="text" name="start_date" value="{{ form.start_date }}" placeholder="z. B. 01.01.2027">
+        <label for="cover_letter">Anschreiben / Nachricht</label><textarea id="cover_letter" name="cover_letter">{{ form.cover_letter }}</textarea>
+        <label for="files">Lebenslauf &amp; Unterlagen * <span class="muted small">(PDF, Word, Bild · max. 10 MB je Datei)</span></label>
+        <input id="files" type="file" name="files" multiple accept=".pdf,.doc,.docx,.odt,.png,.jpg,.jpeg" required>
+        <label class="check"><input type="checkbox" name="consent" value="1" required>
+          <span class="small">Ich willige ein, dass {{ company.name }} meine Daten zur Durchführung des Bewerbungsverfahrens verarbeitet. Die Daten werden spätestens {{ company.retention_days }} Tage nach Abschluss des Verfahrens gelöscht. Die Einwilligung kann ich jederzeit widerrufen.</span></label>
+        <p><button class="btn" style="width:100%;justify-content:center">Bewerbung absenden</button></p>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,30 @@
+{% extends "app/layout.html" %}
+{% block title %}Bewerber:innen – {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="topbar"><h1>Bewerber:innen</h1>{% if user.role != 'viewer' %}<a class="btn" href="/app/bewerber/neu">+ Manuell erfassen</a>{% endif %}</div>
+<form class="card filters" method="get">
+  <div><label for="q">Suche</label><input id="q" type="text" name="q" value="{{ filters.q }}" placeholder="Name oder E-Mail"></div>
+  <div><label for="job">Stelle</label><select id="job" name="job"><option value="0">Alle</option>
+    {% for j in jobs %}<option value="{{ j.id }}" {{ 'selected' if filters.job == j.id }}>{{ j.title }}</option>{% endfor %}</select></div>
+  <div><label for="stage">Phase</label><select id="stage" name="stage"><option value="0">Alle</option>
+    {% for s in stages %}<option value="{{ s.id }}" {{ 'selected' if filters.stage == s.id }}>{{ s.name }}</option>{% endfor %}</select></div>
+  <div><label for="status">Status</label><select id="status" name="status">
+    {% for v, l in [('aktiv', 'Aktiv'), ('abgeschlossen', 'Abgeschlossen'), ('alle', 'Alle')] %}<option value="{{ v }}" {{ 'selected' if filters.status == v }}>{{ l }}</option>{% endfor %}</select></div>
+  <div style="flex:0 0 auto"><button class="btn">Filtern</button></div>
+</form>
+<div class="card table-wrap">
+  {% if apps %}
+  <table>
+    <tr><th>Name</th><th>Stelle</th><th>Phase</th><th>Bewertung</th><th>Quelle</th><th>Eingang</th></tr>
+    {% for a in apps %}
+    <tr>
+      <td><a href="/app/bewerber/{{ a.id }}"><strong>{{ a.first_name }} {{ a.last_name }}</strong></a><div class="muted small">{{ a.email }}</div></td>
+      <td>{{ a.job_title }}</td><td><span class="badge {{ a.stage_kind }}">{{ a.stage_name }}</span></td>
+      <td class="stars">{{ '★' * a.rating }}{{ '☆' * (5 - a.rating) }}</td><td class="small">{{ a.source }}</td>
+      <td class="muted small">{{ a.created_at|datum }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="muted">Keine Bewerbungen gefunden.</p>{% endif %}
+</div>
+{% endblock %}

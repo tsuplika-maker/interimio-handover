@@ -1,0 +1,19 @@
+{% extends "app/layout.html" %}
+{% block title %}Stellen – {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="topbar"><h1>Stellen</h1>{% if user.role != 'viewer' %}<a class="btn" href="/app/stellen/neu">+ Neue Stelle</a>{% endif %}</div>
+<div class="card table-wrap">
+  {% if jobs %}
+  <table>
+    <tr><th>Titel</th><th>Status</th><th>Aktiv</th><th>Gesamt</th><th>Erstellt</th></tr>
+    {% for j in jobs %}
+    <tr>
+      <td><a href="/app/stellen/{{ j.id }}"><strong>{{ j.title }}</strong></a><div class="muted small">{{ [j.department, j.location, j.employment_type]|select|join(' · ') }}</div></td>
+      <td><span class="badge {{ j.status }}">{{ STATUS_LABELS[j.status] }}</span></td>
+      <td>{{ j.active or 0 }}</td><td>{{ j.total }}</td><td class="muted small">{{ j.created_at|datum }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="muted">Noch keine Stellen angelegt.</p>{% endif %}
+</div>
+{% endblock %}

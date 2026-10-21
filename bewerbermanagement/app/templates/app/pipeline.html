@@ -1,0 +1,40 @@
+{% extends "app/layout.html" %}
+{% block title %}{{ job.title }} – {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <h1>{{ job.title }} <span class="badge {{ job.status }}">{{ STATUS_LABELS[job.status] }}</span></h1>
+    <p class="muted">{{ [job.department, job.location, job.employment_type, job.remote]|select|join(' · ') }} · {{ total }} Bewerbung{{ 'en' if total != 1 }}</p>
+  </div>
+  {% if user.role != 'viewer' %}
+  <div class="actions">
+    <a class="btn secondary" href="/app/bewerber/neu?job={{ job.id }}">+ Bewerber:in</a>
+    <a class="btn secondary" href="/app/stellen/{{ job.id }}/bearbeiten">Bearbeiten</a>
+    {% if job.status == 'published' %}<a class="btn secondary" href="/karriere/{{ org.slug }}/stellen/{{ job.id }}" target="_blank">Anzeige ↗</a>{% endif %}
+    <form class="inline" method="post" action="/app/stellen/{{ job.id }}/status">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      {% if job.status != 'published' %}<button class="btn" name="status" value="published">Veröffentlichen</button>
+      {% else %}<button class="btn danger" name="status" value="closed">Stelle schließen</button>{% endif %}
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% if job.status == 'draft' %}<div class="notice">Diese Stelle ist ein Entwurf und noch nicht auf Ihrer Karriereseite sichtbar.</div>{% endif %}
+<div class="board" data-csrf="{{ csrf }}">
+  {% for col in columns %}
+  <div class="column" data-stage="{{ col.stage.id }}" data-kind="{{ col.stage.kind }}">
+    <h3><span>{{ col.stage.name }}</span><span class="count muted">{{ col.apps|length }}</span></h3>
+    <div class="list">
+      {% for a in col.apps %}
+      <div class="cand" draggable="{{ 'true' if user.role != 'viewer' else 'false' }}" data-id="{{ a.id }}">
+        <a href="/app/bewerber/{{ a.id }}">{{ a.first_name }} {{ a.last_name }}</a>
+        <div class="meta"><span class="stars">{{ '★' * a.rating }}{{ '☆' * (5 - a.rating) }}</span><span>{% if a.note_count %}💬 {{ a.note_count }} · {% endif %}{{ a.created_at|datum }}</span></div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% if user.role != 'viewer' %}<p class="muted small">Tipp: Karten per Drag &amp; Drop in eine andere Phase ziehen.</p>{% endif %}
+{% endblock %}
+{% block scripts %}<script src="/static/pipeline.js"></script>{% endblock %}

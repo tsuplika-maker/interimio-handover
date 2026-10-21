@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Anmelden – {{ APP_NAME }}{% endblock %}
+{% block body %}
+<div class="auth-box">
+  <p style="text-align:center"><a href="/"><strong style="font-size:1.4rem">{{ APP_NAME }}</strong></a></p>
+  <div class="card">
+    <h1>Anmelden</h1>
+    {% include "_flash.html" %}
+    {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+    <form method="post" action="/login">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label for="email">E-Mail</label><input id="email" type="email" name="email" required autofocus>
+      <label for="password">Passwort</label><input id="password" type="password" name="password" required>
+      <p><button class="btn" style="width:100%;justify-content:center">Anmelden</button></p>
+    </form>
+    <p class="muted small">Noch kein Konto? <a href="/registrieren">14 Tage kostenlos testen</a></p>
+  </div>
+</div>
+{% endblock %}

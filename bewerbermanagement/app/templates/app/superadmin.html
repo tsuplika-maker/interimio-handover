@@ -1,0 +1,21 @@
+{% extends "app/layout.html" %}
+{% block title %}Superadmin – {{ APP_NAME }}{% endblock %}
+{% block content %}
+<div class="topbar"><h1>Kunden</h1><div class="card stat" style="margin:0"><div class="num">{{ mrr }} €</div><div class="label">MRR (Listenpreis)</div></div></div>
+<div class="card table-wrap">
+  <table>
+    <tr><th>Firma</th><th>Seit</th><th>Nutzer</th><th>Stellen</th><th>Bewerbungen</th><th>Tarif</th></tr>
+    {% for o in orgs %}
+    <tr>
+      <td><strong>{{ o.name }}</strong><div class="small"><a href="/karriere/{{ o.slug }}" target="_blank">/karriere/{{ o.slug }}</a></div></td>
+      <td class="small">{{ o.created_at|datum }}{% if o.plan == 'trial' %}<div class="muted">Test bis {{ o.trial_ends_at|datum }}</div>{% endif %}</td>
+      <td>{{ o.users }}</td><td>{{ o.jobs }}</td><td>{{ o.apps }}</td>
+      <td><form class="actions" method="post" action="/superadmin/{{ o.id }}/plan">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <select name="plan" style="width:auto">{% for k, p in PLANS.items() %}<option value="{{ k }}" {{ 'selected' if k == o.plan }}>{{ p.name }}</option>{% endfor %}</select>
+        <button class="btn sm secondary">Setzen</button></form></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}
